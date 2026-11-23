@@ -90,11 +90,7 @@ entity Customer {
     address_country : VARCHAR
 }
 
-note right of Customer
-  Java-seitig: Customer extends User (@MappedSuperclass).
-  Adress ist @Embedded -> Spalten address_* in derselben Tabelle.
-  Es gibt KEINE eigene "user"-Tabelle.
-end note
+
 
 entity Order {
     * order_id : BIGINT <pk>
@@ -167,12 +163,7 @@ entity Phone_Numbers {
     phone_number : VARCHAR
 }
 
-note right of Phone_Numbers
-  ACHTUNG: phone_numbers ist aktuell verwaist –
-  keine Entity referenziert sie per FK.
-  Store.phone_number ist ein @Embedded-Wert,
-  keine Relation auf diese Tabelle.
-end note
+
 
 ' ===================== Beziehungen =====================
 
