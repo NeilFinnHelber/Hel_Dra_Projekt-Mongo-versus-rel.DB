@@ -26,13 +26,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
 /**
  * testrunner für den mongo vs relational benchmark
  *
  * - POST /tests/run legt ein BenchmarkResult an und startet async
- *   (eigener thread pool, request läuft nicht in timeout)
+ *   (eigener single thread pool, tests laufen hintereinander,
+ *   request läuft nicht in timeout)
  * - GET /tests/results liefert alle läufe
+ * - vor jedem lauf werden die benchmark daten zurückgesetzt,
+ *   damit die ergebnisse vergleichbar sind
  *
  * Ablauf pro lauf:
  * - index anlegen oder droppen (je nach variante)
@@ -64,7 +68,8 @@ public class BenchmarkRunner {
     private final MongoDatabase mongoDatabase;
     private final JdbcTemplate jdbcTemplate;
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(2);
+    // single thread: tests müssen hintereinander laufen (issue vorgabe)
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final List<BenchmarkResult> results = new CopyOnWriteArrayList<>();
     private final AtomicLong idSeq = new AtomicLong();
 
@@ -109,6 +114,9 @@ public class BenchmarkRunner {
                     ? mongoRepository
                     : jpaRepository;
 
+            // db zurücksetzen vor jedem lauf, sonst sind zeiten nicht vergleichbar
+            resetBenchmarkData(result.getDatabase());
+
             applyIndex(result.getDatabase(), result.isIndexVariant());
 
             long base = idBase(result.getDatabase());
@@ -152,6 +160,31 @@ public class BenchmarkRunner {
             return "mongo";
         }
         return "rel";
+    }
+
+    // ---------- reset ----------
+
+    /**
+     * löscht nur benchmark daten (bench.user.* / Benchmarkstadt),
+     * seed daten bleiben unangetastet
+     */
+    private void resetBenchmarkData(String database) {
+        if ("mongo".equals(database)) {
+            MongoCollection<Document> collection =
+                    mongoDatabase.getCollection(MongoCustomerRepository.COLLECTION_NAME);
+            collection.deleteMany(Filters.or(
+                    Filters.eq("address.city", BENCH_CITY),
+                    Filters.regex("nickname", Pattern.compile("^bench\\.user\\."))));
+        } else {
+            // fk reihenfolge: kinder vor parent (placements, billings, dann customer)
+            jdbcTemplate.update(
+                    "delete from order_placement where customer_id in "
+                            + "(select id from customer where nickname like 'bench.user.%')");
+            jdbcTemplate.update(
+                    "delete from billing_information where customer_id in "
+                            + "(select id from customer where nickname like 'bench.user.%')");
+            jdbcTemplate.update("delete from customer where nickname like 'bench.user.%'");
+        }
     }
 
     // ---------- index varianten ----------
