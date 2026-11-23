@@ -1,0 +1,31 @@
+{
+  "_id": 1,
+  "nickname": "seed.user.1",
+  "email": "seed.user.1@example.com",
+  "firstName": "Anna",
+  "lastName": "Huber1",
+  "permission": "Admin",
+  "address": {
+    "street": "Seedstraße 1",
+    "city": "Wien",
+    "zipCode": "1001",
+    "country": "Austria"
+  },
+  "billingInformation": [
+    {
+      "cardNumber": "4000000000000000",
+      "expirationDate": "2027-01-01",
+      "cvv": 100
+    }
+  ],
+  "orderPlacements": [
+    {
+      "orderId": 1,
+      "orderDate": "2020-01-01",
+      "orderReturnDate": "2020-01-15",
+      "actualReturnDate": "2020-01-11",
+      "totalAmount": 42.00,
+      "storeId": 1
+    }
+  ]
+}
