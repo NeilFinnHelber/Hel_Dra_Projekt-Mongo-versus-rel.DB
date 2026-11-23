@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>White Wolf – Dashboard</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}" />
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">🐺 White Wolf</a>
+        <a href="/films">Filme</a>
+        <a href="/series">Serien</a>
+        <a href="/customers">Kunden</a>
+        <a href="/orders">Bestellungen</a>
+        <a href="/stores">Stores</a>
+        <a href="/docs">Docs</a>
+        <div class="spacer"></div>
+        
+        <div sec:authorize="isAuthenticated()" style="display: flex; align-items: center; gap: 1rem;">
+            <span style="font-size: 0.9rem; font-weight: bold; text-transform: uppercase;">
+                👤 <span sec:authentication="name">User</span> (<span sec:authentication="principal.authorities[0].authority">Role</span>)
+            </span>
+            <form th:action="@{/logout}" method="post" style="display: inline;">
+                <button type="submit" class="admin-btn active">🚪 Logout</button>
+            </form>
+        </div>
+        <div sec:authorize="!isAuthenticated()">
+            <a href="/login" class="admin-btn" style="text-decoration: none;">🔑 Login</a>
+        </div>
+    </nav>
+
+    <main>
+        <div class="admin-banner" id="adminBanner">
+            <span>⚡ Admin-Modus aktiv</span>
+            <small>Navigiere zu einer Seite, um Einträge zu verwalten.</small>
+        </div>
+        <div class="hero">
+            <h1>White Wolf Video Store</h1>
+            <p>Dein persönliches Videothek-Management-System</p>
+        </div>
+        <div class="stats">
+            <a href="/films" class="stat-card">
+                <div class="icon">🎬</div>
+                <div class="number" th:text="${filmCount}">0</div>
+                <div class="label">Filme</div>
+            </a>
+            <a href="/series" class="stat-card">
+                <div class="icon">📺</div>
+                <div class="number" th:text="${seriesCount}">0</div>
+                <div class="label">Serien</div>
+            </a>
+            <a href="/customers" class="stat-card">
+                <div class="icon">👥</div>
+                <div class="number" th:text="${customerCount}">0</div>
+                <div class="label">Kunden</div>
+            </a>
+            <a href="/orders" class="stat-card">
+                <div class="icon">📦</div>
+                <div class="number" th:text="${orderCount}">0</div>
+                <div class="label">Bestellungen</div>
+            </a>
+            <a href="/stores" class="stat-card">
+                <div class="icon">🏪</div>
+                <div class="number" th:text="${storeCount}">0</div>
+                <div class="label">Stores</div>
+            </a>
+        </div>
+    </main>
+
+    <script sec:authorize="hasAnyRole('ADMIN', 'EMPLOYEE')">
+        window.isUserAdmin = true;
+    </script>
+    <script sec:authorize="!hasAnyRole('ADMIN', 'EMPLOYEE')">
+        window.isUserAdmin = false;
+    </script>
+
+    <script>
+        function isAdmin() { return window.isUserAdmin === true; }
+
+        function applyAdminState() {
+            const banner = document.getElementById('adminBanner');
+            if (isAdmin()) {
+                banner.classList.add('show');
+            } else {
+                banner.classList.remove('show');
+            }
+        }
+
+        applyAdminState();
+    </script>
+</body>
+</html>

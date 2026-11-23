@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bestellungen – White Wolf</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}" />
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">🐺 White Wolf</a>
+        <a href="/films">Filme</a>
+        <a href="/series">Serien</a>
+        <a href="/customers">Kunden</a>
+        <a href="/orders" class="active">Bestellungen</a>
+        <a href="/stores">Stores</a>
+        <a href="/docs">Docs</a>
+        <div class="spacer"></div>
+        <div sec:authorize="isAuthenticated()" style="display:flex;align-items:center;gap:1rem;">
+            <span style="font-size:.9rem;font-weight:bold;text-transform:uppercase;">👤 <span sec:authentication="name">User</span></span>
+            <form th:action="@{/logout}" method="post" style="display:inline;">
+                <button type="submit" class="admin-btn active">🚪 Logout</button>
+            </form>
+        </div>
+        <div sec:authorize="!isAuthenticated()">
+            <a href="/login" class="admin-btn" style="text-decoration:none;">🔑 Login</a>
+        </div>
+    </nav>
+
+    <div class="modal-overlay" id="orderModal">
+        <div class="modal">
+            <h2>➕ Bestellung erstellen</h2>
+            <div class="form-row"><label>Datum &amp; Uhrzeit *</label><input type="datetime-local" id="orderDate" /></div>
+            <div class="form-row"><label>Gesamtbetrag (€) *</label><input type="number" id="orderAmount" placeholder="z.B. 29.99" min="0" step="0.01" /></div>
+            <div class="form-row">
+                <label>Store *</label>
+                <select id="orderStoreId">
+                    <option value="">Bitte wählen...</option>
+                    <option th:each="s : ${stores}" th:value="${s.id}" th:text="|Store #${s.id} (${s.phoneNumber})|"></option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('orderModal')">Abbrechen</button>
+                <button class="btn btn-confirm" onclick="saveOrder()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal" style="max-width:380px">
+            <h2>🗑️ Bestellung löschen</h2>
+            <p style="color:var(--muted);font-size:.88rem;margin:1rem 0 1.5rem">Möchtest du diese Bestellung wirklich löschen?</p>
+            <input type="hidden" id="deleteId" />
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('deleteModal')">Abbrechen</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">Löschen</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <main>
+        <h1>📦 Bestellungen</h1>
+        <p class="subtitle" th:text="|${orders.size()} Bestellungen gesamt|">0 Bestellungen</p>
+
+        <div class="admin-toolbar" id="adminToolbar">
+            <span>⚡ Admin-Modus – Bestellungen verwalten</span>
+            <button class="btn-add" onclick="openCreateOrder()">➕ Bestellung erstellen</button>
+        </div>
+
+        <table th:if="${!orders.isEmpty()}">
+            <thead>
+                <tr>
+                    <th>Bestell-ID</th>
+                    <th>Datum</th>
+                    <th>Betrag</th>
+                    <th>Store-ID</th>
+                    <th class="td-actions hidden" id="actionsHeader">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="o : ${orders}">
+                    <td class="muted" th:text="${'#' + o.id}">-</td>
+                    <td th:text="${#temporals.format(o.orderDate, 'dd.MM.yyyy HH:mm')}">-</td>
+                    <td class="amount" th:text="${'€ ' + o.totalAmount}">€ 0.00</td>
+                    <td class="muted" th:text="${o.storeId}">-</td>
+                    <td class="td-actions hidden">
+                        <button class="btn-icon btn-delete" th:onclick="|openDeleteOrder(${o.id})|" title="Löschen">🗑️</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="empty" th:if="${orders.isEmpty()}">Keine Bestellungen gefunden.</p>
+    </main>
+
+    <script sec:authorize="hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=true;</script>
+    <script sec:authorize="!hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=false;</script>
+    <script>
+        function isAdmin() { return window.isUserAdmin===true; }
+        function applyAdminState() {
+            const toolbar = document.getElementById('adminToolbar');
+            const actionCells = document.querySelectorAll('.td-actions');
+            if (isAdmin()) {
+                toolbar.classList.add('show');
+                actionCells.forEach(c => c.classList.remove('hidden'));
+            } else {
+                toolbar.classList.remove('show');
+                actionCells.forEach(c => c.classList.add('hidden'));
+            }
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+        function showToast(msg, type='success') {
+            const t = document.getElementById('toast');
+            t.textContent = (type==='success'?'✅ ':'❌ ') + msg;
+            t.className = 'toast ' + type + ' show';
+            setTimeout(() => t.classList.remove('show'), 3500);
+        }
+        function openCreateOrder() {
+            const now = new Date(); now.setSeconds(0,0);
+            document.getElementById('orderDate').value = now.toISOString().slice(0,16);
+            document.getElementById('orderAmount').value = '';
+            document.getElementById('orderStoreId').value = '';
+            openModal('orderModal');
+        }
+        function openDeleteOrder(id) { document.getElementById('deleteId').value=id; openModal('deleteModal'); }
+
+        async function saveOrder() {
+            const dateVal = document.getElementById('orderDate').value;
+            const amount = parseFloat(document.getElementById('orderAmount').value);
+            const storeId = parseInt(document.getElementById('orderStoreId').value);
+            if (!dateVal) { showToast('Datum ist erforderlich!','error'); return; }
+            if (isNaN(amount) || amount < 0) { showToast('Gültiger Betrag erforderlich!','error'); return; }
+            if (isNaN(storeId) || storeId < 1) { showToast('Gültige Store-ID erforderlich!','error'); return; }
+            const body = {
+                orderDate: dateVal + ':00',
+                totalAmount: amount,
+                storeId: storeId
+            };
+            try {
+                const res = await fetch('/api/v1.0.0/orders', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('orderModal'); showToast('Bestellung erstellt!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        async function confirmDelete() {
+            const id = document.getElementById('deleteId').value;
+            try {
+                const res = await fetch(`/api/v1.0.0/orders/${id}`, {method:'DELETE'});
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('deleteModal'); showToast('Bestellung gelöscht!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        applyAdminState();
+    </script>
+</body>
+</html>

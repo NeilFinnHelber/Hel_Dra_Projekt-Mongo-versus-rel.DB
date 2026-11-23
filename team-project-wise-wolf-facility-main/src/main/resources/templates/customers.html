@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kunden – White Wolf</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}" />
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">🐺 White Wolf</a>
+        <a href="/films">Filme</a>
+        <a href="/series">Serien</a>
+        <a href="/customers" class="active">Kunden</a>
+        <a href="/orders">Bestellungen</a>
+        <a href="/stores">Stores</a>
+        <a href="/docs">Docs</a>
+        <div class="spacer"></div>
+        <div sec:authorize="isAuthenticated()" style="display:flex;align-items:center;gap:1rem;">
+            <span style="font-size:.9rem;font-weight:bold;text-transform:uppercase;">👤 <span sec:authentication="name">User</span></span>
+            <form th:action="@{/logout}" method="post" style="display:inline;">
+                <button type="submit" class="admin-btn active">🚪 Logout</button>
+            </form>
+        </div>
+        <div sec:authorize="!isAuthenticated()">
+            <a href="/login" class="admin-btn" style="text-decoration:none;">🔑 Login</a>
+        </div>
+    </nav>
+
+    <div class="modal-overlay" id="customerModal">
+        <div class="modal">
+            <h2 id="customerModalTitle">➕ Kunden hinzufügen</h2>
+            <input type="hidden" id="customerEditId" />
+            <div class="form-row"><label>Vorname *</label><input type="text" id="customerFirst" placeholder="z.B. Max" /></div>
+            <div class="form-row"><label>Nachname *</label><input type="text" id="customerLast" placeholder="z.B. Mustermann" /></div>
+            <div class="form-row"><label>E-Mail *</label><input type="email" id="customerEmail" placeholder="max@example.com" /></div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('customerModal')">Abbrechen</button>
+                <button class="btn btn-confirm" onclick="saveCustomer()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal" style="max-width:380px">
+            <h2>🗑️ Kunden löschen</h2>
+            <p style="color:var(--muted);font-size:.88rem;margin:1rem 0 1.5rem">Möchtest du diesen Kunden wirklich löschen?</p>
+            <input type="hidden" id="deleteId" />
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('deleteModal')">Abbrechen</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">Löschen</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <main>
+        <h1>👥 Kunden</h1>
+        <p class="subtitle" th:text="|${customers.size()} registrierte Kunden|">0 Kunden</p>
+
+        <div class="admin-toolbar" id="adminToolbar">
+            <span>⚡ Admin-Modus – Kunden verwalten</span>
+            <button class="btn-add" onclick="openCreateCustomer()">➕ Kunden hinzufügen</button>
+        </div>
+
+        <table th:if="${!customers.isEmpty()}">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Nickname</th>
+                    <th>E-Mail</th>
+                    <th>ID</th>
+                    <th class="td-actions hidden" id="actionsHeader">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="c : ${customers}"
+                    th:attr="data-id=${c.id},
+                             data-first=${c.firstName},
+                             data-last=${c.lastName},
+                             data-email=${c.email}">
+                    <td>
+                        <span class="avatar" th:text="${#strings.substring(c.firstName,0,1)+#strings.substring(c.lastName,0,1)}">AB</span>
+                        <span th:text="${c.firstName+' '+c.lastName}">Max Mustermann</span>
+                    </td>
+                    <td class="nick" th:text="${c.nickname}">@nick</td>
+                    <td th:text="${c.email}">mail@example.com</td>
+                    <td class="nick" th:text="${c.id}">1</td>
+                    <td class="td-actions hidden">
+                        <button class="btn-icon btn-edit" onclick="openEditCustomerFromRow(this.closest('tr'))" title="Bearbeiten">✏️</button>
+                        &nbsp;
+                        <button class="btn-icon btn-delete" onclick="openDeleteCustomerFromRow(this.closest('tr'))" title="Löschen">🗑️</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="empty" th:if="${customers.isEmpty()}">Keine Kunden gefunden.</p>
+    </main>
+
+    <script sec:authorize="hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=true;</script>
+    <script sec:authorize="!hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=false;</script>
+    <script>
+        function isAdmin() { return window.isUserAdmin===true; }
+        function applyAdminState() {
+            const toolbar = document.getElementById('adminToolbar');
+            const actionCells = document.querySelectorAll('.td-actions');
+            if (isAdmin()) {
+                toolbar.classList.add('show');
+                actionCells.forEach(c => c.classList.remove('hidden'));
+            } else {
+                toolbar.classList.remove('show');
+                actionCells.forEach(c => c.classList.add('hidden'));
+            }
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+        function showToast(msg, type='success') {
+            const t = document.getElementById('toast');
+            t.textContent = (type==='success'?'✅ ':'❌ ') + msg;
+            t.className = 'toast ' + type + ' show';
+            setTimeout(() => t.classList.remove('show'), 3500);
+        }
+        function openCreateCustomer() {
+            document.getElementById('customerModalTitle').textContent = '➕ Kunden hinzufügen';
+            document.getElementById('customerEditId').value = '';
+            ['customerFirst','customerLast','customerEmail'].forEach(id=>document.getElementById(id).value='');
+            openModal('customerModal');
+        }
+        function openEditCustomerFromRow(row) {
+            const d = row.dataset;
+            document.getElementById('customerModalTitle').textContent = '\u270f\ufe0f Kunden bearbeiten';
+            document.getElementById('customerEditId').value = d.id;
+            document.getElementById('customerFirst').value = d.first;
+            document.getElementById('customerLast').value = d.last;
+            document.getElementById('customerEmail').value = d.email;
+            openModal('customerModal');
+        }
+        function openDeleteCustomerFromRow(row) { document.getElementById('deleteId').value=row.dataset.id; openModal('deleteModal'); }
+
+        async function saveCustomer() {
+            const id = document.getElementById('customerEditId').value;
+            const email = document.getElementById('customerEmail').value.trim();
+            const body = {
+                firstName: document.getElementById('customerFirst').value.trim(),
+                lastName: document.getElementById('customerLast').value.trim(),
+                email: { value: email }
+            };
+            if (!body.firstName || !body.lastName) { showToast('Vor- und Nachname sind erforderlich!','error'); return; }
+            if (!email) { showToast('E-Mail ist erforderlich!','error'); return; }
+            try {
+                const method = id ? 'PATCH' : 'POST';
+                const url = id ? `/api/v1.0.0/customers/${id}` : '/api/v1.0.0/customers';
+                const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('customerModal'); showToast(id ? 'Kunde aktualisiert!' : 'Kunde erstellt!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        async function confirmDelete() {
+            const id = document.getElementById('deleteId').value;
+            try {
+                const res = await fetch(`/api/v1.0.0/customers/${id}`, {method:'DELETE'});
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('deleteModal'); showToast('Kunde gelöscht!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        applyAdminState();
+    </script>
+</body>
+</html>

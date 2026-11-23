@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>White Wolf Video Store</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}" />
+    <th:block th:replace="~{::extraStyles}"></th:block>
+</head>
+<body>
+<nav>
+    <a href="/" class="brand">🐺 White Wolf</a>
+    <a th:href="@{/films}">Filme</a>
+    <a th:href="@{/series}">Serien</a>
+    <a th:href="@{/customers}">Kunden</a>
+    <a th:href="@{/orders}">Bestellungen</a>
+    <a th:href="@{/stores}">Stores</a>
+</nav>
+<main>
+    <th:block th:replace="~{::content}"></th:block>
+</main>
+</body>
+</html>

@@ -1,0 +1,1 @@
+ALTER TABLE film ADD COLUMN poster BYTEA;

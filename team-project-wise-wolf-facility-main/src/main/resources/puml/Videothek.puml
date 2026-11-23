@@ -1,0 +1,201 @@
+@startuml Videothek
+
+hide empty methods
+hide empty attributes
+title Videothek – relationales Referenzschema (Flyway V1.0.0 + V1.1.0)
+
+' ===================== Enumerations =====================
+
+enum Genre <<(E,#FFFF00)>> {
+    Action
+    Adventure
+    Animation
+    Comedy
+    Crime
+    Documentary
+    Drama
+    Fantasy
+    Historical
+    Horror
+    Mystery
+    Romance
+    SciFi
+    Thriller
+    Western
+}
+
+enum Language <<(E,#FFFF00)>> {
+    English
+    German
+    French
+    Spanish
+    Japanese
+}
+
+enum Country <<(E,#FFFF00)>> {
+    Austria
+    USA
+    Germany
+    Switzerland
+    France
+    Japan
+    Spain
+    Greece
+    Italy
+}
+
+enum Permission <<(E,#FFFF00)>> {
+    Admin
+    Customer
+    Employee
+}
+
+' ===================== Kern-Entities =====================
+
+entity Film {
+    * film_id : BIGINT <pk>
+    --
+    title : VARCHAR
+    release_year : INT
+    length : FLOAT
+    poster : BYTEA
+}
+
+entity Series {
+    * series_id : BIGINT <pk>
+    --
+    title : VARCHAR
+    release_year : INT
+    episodes : INT
+    length : FLOAT
+}
+
+entity Store {
+    * store_id : BIGINT <pk>
+    --
+    phone_number : VARCHAR
+}
+
+entity Customer {
+    * customer_id : BIGINT <pk>
+    --
+    nickname : VARCHAR <unique>
+    email : VARCHAR <unique>
+    first_name : VARCHAR
+    last_name : VARCHAR
+    permission : Permission
+    address_street : VARCHAR
+    address_city : VARCHAR
+    address_zip_code : VARCHAR
+    address_country : VARCHAR
+}
+
+note right of Customer
+  Java-seitig: Customer extends User (@MappedSuperclass).
+  Adress ist @Embedded -> Spalten address_* in derselben Tabelle.
+  Es gibt KEINE eigene "user"-Tabelle.
+end note
+
+entity Order {
+    * order_id : BIGINT <pk>
+    --
+    order_date : TIMESTAMP
+    total_amount : NUMERIC(10,2)
+    store_id : BIGINT <fk>
+}
+
+entity Order_Placement {
+    * order_placement_id : BIGINT <pk>
+    --
+    order_date : DATE
+    order_return_date : DATE
+    actual_return_date : DATE
+    customer_id : BIGINT <fk>
+    order_id : BIGINT <fk> <unique>
+}
+
+entity Billing_Information {
+    * billing_information_id : BIGINT <pk>
+    --
+    card_number : VARCHAR(16)
+    expiration_date : DATE
+    cvv : INT
+    customer_id : BIGINT <fk>
+}
+
+' ===================== Element-Collections (Wertelisten) =====================
+
+entity Film_Genres {
+    * film_id : BIGINT <fk>
+    * genres : Genre
+}
+
+entity Film_Languages {
+    * film_id : BIGINT <fk>
+    * languages : Language
+}
+
+entity Series_Genres {
+    * series_id : BIGINT <fk>
+    * genres : Genre
+}
+
+entity Series_Languages {
+    * series_id : BIGINT <fk>
+    * languages : Language
+}
+
+' ===================== m:n Join-Tabellen =====================
+
+entity Store_Films {
+    * store_id : BIGINT <fk>
+    * film_id : BIGINT <fk>
+}
+
+entity Store_Series {
+    * store_id : BIGINT <fk>
+    * series_id : BIGINT <fk>
+}
+
+' ===================== Verwaiste Tabelle =====================
+
+entity Phone_Numbers {
+    * id : BIGINT <pk, identity>
+    --
+    telephone_prefix : INT
+    country : Country
+    phone_number : VARCHAR
+}
+
+note right of Phone_Numbers
+  ACHTUNG: phone_numbers ist aktuell verwaist –
+  keine Entity referenziert sie per FK.
+  Store.phone_number ist ein @Embedded-Wert,
+  keine Relation auf diese Tabelle.
+end note
+
+' ===================== Beziehungen =====================
+
+' m:n über Join-Tabellen
+Store }o--o{ Store_Films : "store_id"
+Film  }o--o{ Store_Films : "film_id"
+Store }o--o{ Store_Series : "store_id"
+Series }o--o{ Store_Series : "series_id"
+
+' 1:n Element-Collections
+Film   ||--o{ Film_Genres    : has
+Film   ||--o{ Film_Languages : has
+Series ||--o{ Series_Genres    : has
+Series ||--o{ Series_Languages : has
+
+' Bestellwesen
+Customer ||--o{ Order_Placement : "places"
+Store    ||--o{ Order           : "operates"
+
+' 1:0..1 Order -> Order_Placement (order_id unique = höchstens eine Verleihe pro Bestellung)
+Order ||--o| Order_Placement : "has at most one"
+
+' 1:n Billing
+Customer ||--o{ Billing_Information : "pays with"
+
+@enduml

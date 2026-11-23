@@ -1,0 +1,28 @@
+set
+client_min_messages = WARNING;
+alter table if exists billing_information drop constraint if exists FKibh7w1bb6mpp1aetxu1a71kfm;
+alter table if exists film_genres drop constraint if exists FKtke72661p7jjfc48frtcclygv;
+alter table if exists film_languages drop constraint if exists FKjsgo6hrul6e27d44u93tes9un;
+alter table if exists order_placement drop constraint if exists FKqoph3p6hqded388yyavbv4xqt;
+alter table if exists order_placement drop constraint if exists FKcyn88t9auk0w8oej49l581nfv;
+alter table if exists orders drop constraint if exists FK5n14sr4mswfdtaoiwj7rkt0mw;
+alter table if exists series_genres drop constraint if exists FK7nb1o0xm333ccy0lhbb8xvtlx;
+alter table if exists series_languages drop constraint if exists FKqk1yl6s8igwsswnx85hsqr65e;
+alter table if exists store_films drop constraint if exists FKr27yxc7f1po1qmlqhgnjmx3es;
+alter table if exists store_films drop constraint if exists FK5nr4avlgfhoebs0qq6dfw3v1j;
+alter table if exists store_series drop constraint if exists FKsew4g4l2ur10ch0o90d5ncp2g;
+alter table if exists store_series drop constraint if exists FKba2e5fsqfhkwlhxyyswjp4bxc;
+drop table if exists billing_information cascade;
+drop table if exists customer cascade;
+drop table if exists film cascade;
+drop table if exists film_genres cascade;
+drop table if exists film_languages cascade;
+drop table if exists order_placement cascade;
+drop table if exists orders cascade;
+drop table if exists phone_numbers cascade;
+drop table if exists series cascade;
+drop table if exists series_genres cascade;
+drop table if exists series_languages cascade;
+drop table if exists store cascade;
+drop table if exists store_films cascade;
+drop table if exists store_series cascade;

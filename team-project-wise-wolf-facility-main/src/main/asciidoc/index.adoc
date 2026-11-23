@@ -1,0 +1,257 @@
+= White Wolf Video Store – API Documentation
+:doctype: article
+:toc: left
+:toc-title: Inhaltsverzeichnis
+:toclevels: 3
+:icons: font
+:source-highlighter: highlight.js
+:imagesdir: images
+:numbered:
+
+== Übersicht
+
+Das *White Wolf Video Store*-System ist ein RESTful Web-Service für die Verwaltung eines Videothek-Katalogs.
+Es unterstützt HATEOAS-konforme Navigation und rollenbasierte Zugriffskontrolle.
+
+=== Technologie-Stack
+
+[cols="2,4", options="header"]
+|===
+| Komponente | Technologie
+| Backend     | Spring Boot 3.5 / Java 24
+| Persistenz  | PostgreSQL 17 + Flyway Migrations
+| API-Stil    | REST + HATEOAS (HAL)
+| Sicherheit  | Spring Security (In-Memory, Formular-Login)
+| WebUI       | Thymeleaf SSR + Spring Security Dialekt
+| Doku        | AsciiDoc (dieses Dokument)
+| Container   | Docker + Docker Compose
+|===
+
+---
+
+== Sicherheit & Rollen
+
+Der Zugriff auf schreibende API-Endpunkte (`POST`, `PATCH`, `PUT`, `DELETE`) ist auf folgende Rollen beschränkt:
+
+[cols="1,2,3", options="header"]
+|===
+| Benutzer  | Rolle         | Rechte
+| `admin`   | ADMIN, EMPLOYEE | Alle Lese- und Schreiboperationen
+| `employee`| EMPLOYEE      | Schreiboperationen (kein Admin-Panel)
+| `customer`| CUSTOMER      | Nur Lesezugriff (GET)
+|===
+
+NOTE: GET-Anfragen auf `/api/v1.0.0/**` sowie alle WebUI-Seiten sind **öffentlich** zugänglich.
+
+=== Anmeldung
+
+Das System verwendet Formular-Login unter `/login`. Nach erfolgreicher Anmeldung wird auf `/` weitergeleitet.
+Abmeldung erfolgt via POST auf `/logout`.
+
+---
+
+== REST API Endpunkte
+
+Alle Endpunkte geben HATEOAS-konforme HAL-JSON-Antworten zurück.
+Seitenverwaltung erfolgt über Springdoc/OpenAPI (Swagger UI unter `/swagger-ui.html`).
+
+=== Filme
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/filme` | Alle Filme (paginiert, HATEOAS)
+| GET     | `/api/v1.0.0/filme/{id}` | Einzelnen Film abrufen
+| POST    | `/api/v1.0.0/filme` | Neuen Film erstellen (ADMIN/EMPLOYEE)
+| PATCH   | `/api/v1.0.0/filme/{id}` | Film aktualisieren (ADMIN/EMPLOYEE)
+| DELETE  | `/api/v1.0.0/filme/{id}` | Film löschen (ADMIN/EMPLOYEE)
+| POST    | `/api/v1.0.0/filme/{id}/poster` | Poster hochladen (Multipart, ADMIN/EMPLOYEE)
+| GET     | `/api/v1.0.0/filme/{id}/poster` | Poster herunterladen (JPEG/PNG)
+|===
+
+==== Beispiel: Film erstellen
+
+[source,http]
+----
+POST /api/v1.0.0/filme
+Content-Type: application/json
+Authorization: Basic YWRtaW46YWRtaW4=
+
+{
+  "title": "Inception",
+  "releaseYear": 2010,
+  "length": 148.0,
+  "languages": ["English"],
+  "genres": ["SciFi", "Thriller"]
+}
+----
+
+==== Beispiel-Antwort (HAL)
+
+[source,json]
+----
+{
+  "id": 1701234567890,
+  "title": "Inception",
+  "releaseYear": 2010,
+  "length": 148.0,
+  "languages": ["English"],
+  "genres": ["SciFi", "Thriller"],
+  "hasPoster": false,
+  "_links": {
+    "self": { "href": "/api/v1.0.0/filme/1701234567890" },
+    "films": { "href": "/api/v1.0.0/filme/filme" }
+  }
+}
+----
+
+=== Serien
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/series` | Alle Serien (paginiert)
+| GET     | `/api/v1.0.0/series/{id}` | Einzelne Serie
+| POST    | `/api/v1.0.0/series` | Neue Serie erstellen
+| PATCH   | `/api/v1.0.0/series/{id}` | Serie aktualisieren
+| DELETE  | `/api/v1.0.0/series/{id}` | Serie löschen
+|===
+
+=== Kunden
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/customers` | Alle Kunden (paginiert)
+| GET     | `/api/v1.0.0/customers/{id}` | Einzelnen Kunden abrufen
+| POST    | `/api/v1.0.0/customers` | Neuen Kunden anlegen
+| PATCH   | `/api/v1.0.0/customers/{id}` | Kundendaten aktualisieren
+| DELETE  | `/api/v1.0.0/customers/{id}` | Kunden löschen
+|===
+
+=== Stores
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/stores` | Alle Stores (paginiert)
+| GET     | `/api/v1.0.0/stores/{id}` | Einzelnen Store abrufen
+| POST    | `/api/v1.0.0/stores` | Neuen Store anlegen
+| DELETE  | `/api/v1.0.0/stores/{id}` | Store löschen
+|===
+
+=== Bestellungen
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/orders` | Alle Bestellungen (paginiert)
+| GET     | `/api/v1.0.0/orders/{id}` | Einzelne Bestellung
+| POST    | `/api/v1.0.0/orders` | Neue Bestellung
+| DELETE  | `/api/v1.0.0/orders/{id}` | Bestellung löschen
+|===
+
+=== Order Placements
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/order-placements` | Alle Bestellpositionen (paginiert)
+| GET     | `/api/v1.0.0/order-placements/{id}` | Einzelne Bestellposition
+| POST    | `/api/v1.0.0/order-placements` | Neue Bestellposition
+| DELETE  | `/api/v1.0.0/order-placements/{id}` | Bestellposition löschen
+|===
+
+=== Zahlungsinformationen
+
+[cols="1,2,3", options="header"]
+|===
+| Methode | Pfad | Beschreibung
+| GET     | `/api/v1.0.0/billing` | Alle Zahlungsinformationen (paginiert)
+| GET     | `/api/v1.0.0/billing/{id}` | Einzelne Zahlungsinformation
+| POST    | `/api/v1.0.0/billing` | Neue Zahlungsinformation
+| DELETE  | `/api/v1.0.0/billing/{id}` | Zahlungsinformation löschen
+|===
+
+---
+
+== HATEOAS
+
+Alle Antworten folgen dem *HAL (Hypertext Application Language)*-Format.
+Listenressourcen werden als `PagedModel` zurückgegeben und enthalten `_links` mit `self`, `next`, `prev`, `first` und `last`.
+
+[source,json]
+----
+{
+  "_embedded": {
+    "filmDTOList": [ ... ]
+  },
+  "_links": {
+    "self": { "href": "/api/v1.0.0/filme/filme?page=0&size=20" },
+    "next": { "href": "/api/v1.0.0/filme/filme?page=1&size=20" }
+  },
+  "page": {
+    "size": 20,
+    "totalElements": 42,
+    "totalPages": 3,
+    "number": 0
+  }
+}
+----
+
+---
+
+== WebUI
+
+Die Web-Oberfläche ist erreichbar unter `http://localhost:8080/`.
+
+[cols="1,2", options="header"]
+|===
+| Seite | URL
+| Dashboard | `/`
+| Filme     | `/films`
+| Serien    | `/series`
+| Kunden    | `/customers`
+| Bestellungen | `/orders`
+| Stores    | `/stores`
+| API-Doku (Swagger) | `/swagger-ui.html`
+| Diese Dokumentation | `/docs/index.html`
+|===
+
+---
+
+== Deployment
+
+=== Docker Compose (Entwicklung)
+
+[source,bash]
+----
+docker-compose up -d
+----
+
+Startet:
+
+* *PostgreSQL 17* auf Port `15432`
+* *White Wolf App* auf Port `8080`
+
+=== Umgebungsvariablen der Applikation
+
+[cols="2,2,3", options="header"]
+|===
+| Variable | Standard | Beschreibung
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://postgres:5432/pg2526_4dhif` | Datenbank-URL
+| `SPRING_DATASOURCE_USERNAME` | `owner` | DB-Benutzer
+| `SPRING_DATASOURCE_PASSWORD` | `pwd` | DB-Passwort
+|===
+
+---
+
+== Datenbankschema
+
+Das Schema wird automatisch mit *Flyway* verwaltet. Migrationsskripte befinden sich unter:
+
+----
+src/main/resources/db/migration/
+  V1.0.0__initial_schema.sql   – Initiales Schema
+  V1.1.0__add_film_poster.sql  – Poster-Spalte für Filme
+----

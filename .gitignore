@@ -1,0 +1,13 @@
+# Runtime output / captured logs
+*.log
+app_run.txt
+build_errors.txt
+
+# Environment / secrets
+.env
+.env.*
+
+# JVM crash dumps
+hs_err_pid*
+replay_pid*
+*.hprof
