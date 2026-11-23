@@ -20,16 +20,19 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
+            .cors(org.springframework.security.config.Customizer.withDefaults())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    "/css/**", 
-                    "/js/**", 
-                    "/images/**", 
-                    "/webjars/**", 
+                    "/css/**",
+                    "/js/**",
+                    "/images/**",
+                    "/webjars/**",
                     "/favicon.ico",
                     "/doc/**",
                     "/docs/**"
                 ).permitAll()
+                // benchmark api für frontend/k6, kein login nötig
+                .requestMatchers("/items", "/items/**", "/tests", "/tests/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/", "/films", "/series", "/customers", "/orders", "/stores", "/docs", "/docs/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1.0.0/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1.0.0/**").hasAnyRole("ADMIN", "EMPLOYEE")
