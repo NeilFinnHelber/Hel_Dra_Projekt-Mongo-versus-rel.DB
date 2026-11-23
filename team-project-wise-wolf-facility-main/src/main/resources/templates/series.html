@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Serien – White Wolf</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}" />
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">🐺 White Wolf</a>
+        <a href="/films">Filme</a>
+        <a href="/series" class="active">Serien</a>
+        <a href="/customers">Kunden</a>
+        <a href="/orders">Bestellungen</a>
+        <a href="/stores">Stores</a>
+        <a href="/docs">Docs</a>
+        <div class="spacer"></div>
+        <div sec:authorize="isAuthenticated()" style="display:flex;align-items:center;gap:1rem;">
+            <span style="font-size:.9rem;font-weight:bold;text-transform:uppercase;">👤 <span sec:authentication="name">User</span></span>
+            <form th:action="@{/logout}" method="post" style="display:inline;">
+                <button type="submit" class="admin-btn active">🚪 Logout</button>
+            </form>
+        </div>
+        <div sec:authorize="!isAuthenticated()">
+            <a href="/login" class="admin-btn" style="text-decoration:none;">🔑 Login</a>
+        </div>
+    </nav>
+
+    <div class="modal-overlay" id="seriesModal">
+        <div class="modal">
+            <h2 id="seriesModalTitle">➕ Serie hinzufügen</h2>
+            <input type="hidden" id="seriesEditId" />
+            <div class="form-row"><label>Titel *</label><input type="text" id="seriesTitle" placeholder="z.B. Breaking Bad" /></div>
+            <div class="form-row"><label>Erscheinungsjahr *</label><input type="number" id="seriesYear" placeholder="z.B. 2008" min="1888" max="2099" /></div>
+            <div class="form-row"><label>Episoden *</label><input type="number" id="seriesEpisodes" placeholder="z.B. 62" min="1" /></div>
+            <div class="form-row"><label>Ø Länge pro Episode (min) *</label><input type="number" id="seriesLength" placeholder="z.B. 47" min="1" /></div>
+            <div class="form-row">
+                <label>Sprachen *</label>
+                <div class="checkbox-group" id="seriesLanguages">
+                    <label><input type="checkbox" value="English" /> English</label>
+                    <label><input type="checkbox" value="German" /> German</label>
+                    <label><input type="checkbox" value="French" /> French</label>
+                    <label><input type="checkbox" value="Spanish" /> Spanish</label>
+                    <label><input type="checkbox" value="Japanese" /> Japanese</label>
+                </div>
+            </div>
+            <div class="form-row">
+                <label>Genres *</label>
+                <div class="checkbox-group" id="seriesGenres">
+                    <label><input type="checkbox" value="Action" /> Action</label>
+                    <label><input type="checkbox" value="Adventure" /> Adventure</label>
+                    <label><input type="checkbox" value="Animation" /> Animation</label>
+                    <label><input type="checkbox" value="Comedy" /> Comedy</label>
+                    <label><input type="checkbox" value="Crime" /> Crime</label>
+                    <label><input type="checkbox" value="Documentary" /> Documentary</label>
+                    <label><input type="checkbox" value="Drama" /> Drama</label>
+                    <label><input type="checkbox" value="Fantasy" /> Fantasy</label>
+                    <label><input type="checkbox" value="Historical" /> Historical</label>
+                    <label><input type="checkbox" value="Horror" /> Horror</label>
+                    <label><input type="checkbox" value="Mystery" /> Mystery</label>
+                    <label><input type="checkbox" value="Romance" /> Romance</label>
+                    <label><input type="checkbox" value="SciFi" /> SciFi</label>
+                    <label><input type="checkbox" value="Thriller" /> Thriller</label>
+                    <label><input type="checkbox" value="Western" /> Western</label>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('seriesModal')">Abbrechen</button>
+                <button class="btn btn-confirm" onclick="saveSeries()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal" style="max-width:380px">
+            <h2>🗑️ Serie löschen</h2>
+            <p style="color:var(--muted);font-size:.88rem;margin:1rem 0 1.5rem">Möchtest du diese Serie wirklich löschen?</p>
+            <input type="hidden" id="deleteId" />
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('deleteModal')">Abbrechen</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">Löschen</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <main>
+        <h1>📺 Serien</h1>
+        <p class="subtitle" th:text="|${seriesList.size()} Serien im Katalog|">0 Serien</p>
+
+        <div class="admin-toolbar" id="adminToolbar">
+            <span>⚡ Admin-Modus – Serien verwalten</span>
+            <button class="btn-add" onclick="openCreateSeries()">➕ Serie hinzufügen</button>
+        </div>
+
+        <div class="grid" th:if="${!seriesList.isEmpty()}">
+            <div class="card" th:each="s : ${seriesList}"
+                 th:attr="data-id=${s.id},
+                          data-title=${s.title},
+                          data-year=${s.releaseYear},
+                          data-episodes=${s.episodes != null ? s.episodes : 0},
+                          data-length=${s.length != null ? s.length : 0},
+                          data-langs=${s.languages},
+                          data-genres=${s.genres}">
+                <div class="card-actions">
+                    <button class="btn-icon btn-edit" onclick="openEditSeriesFromCard(this.closest('.card'))" title="Bearbeiten">✏️</button>
+                    <button class="btn-icon btn-delete" onclick="openDeleteSeriesFromCard(this.closest('.card'))" title="Löschen">🗑️</button>
+                </div>
+                <h3 th:text="${s.title}">Serientitel</h3>
+                <p class="meta">
+                    <span th:text="${s.releaseYear}">2024</span>
+                    &nbsp;·&nbsp;
+                    <span th:text="${s.episodes != null ? s.episodes + ' Episoden' : ''}">10 Episoden</span>
+                    &nbsp;·&nbsp;
+                    <span th:text="${s.length != null ? '⌀ ' + s.length + ' min' : ''}">⌀ 45 min</span>
+                </p>
+                <div class="tags">
+                    <span class="tag lang" th:each="lang : ${s.languages}" th:text="${lang}">EN</span>
+                    <span class="tag" th:each="genre : ${s.genres}" th:text="${genre}">Genre</span>
+                </div>
+            </div>
+        </div>
+        <p class="empty" th:if="${seriesList.isEmpty()}">Keine Serien gefunden.</p>
+    </main>
+
+    <script sec:authorize="hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=true;</script>
+    <script sec:authorize="!hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=false;</script>
+    <script>
+        function isAdmin() { return window.isUserAdmin===true; }
+        function applyAdminState() {
+            const toolbar = document.getElementById('adminToolbar');
+            const actions = document.querySelectorAll('.card-actions');
+            if (isAdmin()) {
+                toolbar.classList.add('show');
+                actions.forEach(a => a.classList.add('show'));
+            } else {
+                toolbar.classList.remove('show');
+                actions.forEach(a => a.classList.remove('show'));
+            }
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+        function showToast(msg, type='success') {
+            const t = document.getElementById('toast');
+            t.textContent = (type==='success'?'✅ ':'❌ ') + msg;
+            t.className = 'toast ' + type + ' show';
+            setTimeout(() => t.classList.remove('show'), 3500);
+        }
+        function getChecked(id) { return Array.from(document.querySelectorAll('#'+id+' input:checked')).map(cb=>cb.value); }
+
+        function openCreateSeries() {
+            document.getElementById('seriesModalTitle').textContent = '➕ Serie hinzufügen';
+            document.getElementById('seriesEditId').value = '';
+            ['seriesTitle','seriesYear','seriesEpisodes','seriesLength'].forEach(id => document.getElementById(id).value='');
+            document.querySelectorAll('#seriesLanguages input,#seriesGenres input').forEach(cb=>cb.checked=false);
+            openModal('seriesModal');
+        }
+        function openEditSeriesFromCard(card) {
+            const d = card.dataset;
+            document.getElementById('seriesModalTitle').textContent = '\u270f\ufe0f Serie bearbeiten';
+            document.getElementById('seriesEditId').value = d.id;
+            document.getElementById('seriesTitle').value = d.title;
+            document.getElementById('seriesYear').value = d.year;
+            document.getElementById('seriesEpisodes').value = d.episodes;
+            document.getElementById('seriesLength').value = d.length;
+            const langs = d.langs.replace(/[\[\]]/g,'').split(',').map(s=>s.trim()).filter(Boolean);
+            const genres = d.genres.replace(/[\[\]]/g,'').split(',').map(s=>s.trim()).filter(Boolean);
+            document.querySelectorAll('#seriesLanguages input').forEach(cb=>cb.checked=langs.includes(cb.value));
+            document.querySelectorAll('#seriesGenres input').forEach(cb=>cb.checked=genres.includes(cb.value));
+            openModal('seriesModal');
+        }
+        function openDeleteSeriesFromCard(card) { document.getElementById('deleteId').value=card.dataset.id; openModal('deleteModal'); }
+
+        async function saveSeries() {
+            const id = document.getElementById('seriesEditId').value;
+            const body = {
+                title: document.getElementById('seriesTitle').value.trim(),
+                releaseYear: parseInt(document.getElementById('seriesYear').value),
+                episodes: parseInt(document.getElementById('seriesEpisodes').value),
+                length: parseFloat(document.getElementById('seriesLength').value),
+                languages: getChecked('seriesLanguages'),
+                genres: getChecked('seriesGenres')
+            };
+            if (!body.title) { showToast('Titel ist erforderlich!','error'); return; }
+            if (!body.languages.length) { showToast('Mindestens eine Sprache wählen!','error'); return; }
+            if (!body.genres.length) { showToast('Mindestens ein Genre wählen!','error'); return; }
+            try {
+                const method = id ? 'PATCH' : 'POST';
+                const url = id ? `/api/v1.0.0/series/${id}` : '/api/v1.0.0/series';
+                const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('seriesModal'); showToast(id ? 'Serie aktualisiert!' : 'Serie erstellt!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        async function confirmDelete() {
+            const id = document.getElementById('deleteId').value;
+            try {
+                const res = await fetch(`/api/v1.0.0/series/${id}`, {method:'DELETE'});
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('deleteModal'); showToast('Serie gelöscht!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        applyAdminState();
+    </script>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stores – White Wolf</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}" />
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">🐺 White Wolf</a>
+        <a href="/films">Filme</a>
+        <a href="/series">Serien</a>
+        <a href="/customers">Kunden</a>
+        <a href="/orders">Bestellungen</a>
+        <a href="/stores" class="active">Stores</a>
+        <a href="/docs">Docs</a>
+        <div class="spacer"></div>
+        <div sec:authorize="isAuthenticated()" style="display:flex;align-items:center;gap:1rem;">
+            <span style="font-size:.9rem;font-weight:bold;text-transform:uppercase;">👤 <span sec:authentication="name">User</span></span>
+            <form th:action="@{/logout}" method="post" style="display:inline;">
+                <button type="submit" class="admin-btn active">🚪 Logout</button>
+            </form>
+        </div>
+        <div sec:authorize="!isAuthenticated()">
+            <a href="/login" class="admin-btn" style="text-decoration:none;">🔑 Login</a>
+        </div>
+    </nav>
+
+    <div class="modal-overlay" id="storeModal">
+        <div class="modal">
+            <h2>➕ Store hinzufügen</h2>
+            <div class="form-row">
+                <label>Telefonnummer *</label>
+                <input type="text" id="storePhone" placeholder="z.B. +43 1 123456" />
+            </div>
+            <div class="form-row">
+                <label>Filme (optional)</label>
+                <select id="storeFilmIds" multiple style="height: 120px;">
+                    <option th:each="f : ${films}" th:value="${f.id}" th:text="|${f.title} (${f.releaseYear})|"></option>
+                </select>
+                <small>Halte CTRL bzw. CMD gedrückt, um mehrere auszuwählen</small>
+            </div>
+            <div class="form-row">
+                <label>Serien (optional)</label>
+                <select id="storeSeriesIds" multiple style="height: 120px;">
+                    <option th:each="s : ${seriesList}" th:value="${s.id}" th:text="|${s.title} (${s.releaseYear})|"></option>
+                </select>
+                <small>Halte CTRL bzw. CMD gedrückt, um mehrere auszuwählen</small>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('storeModal')">Abbrechen</button>
+                <button class="btn btn-confirm" onclick="saveStore()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal" style="max-width:380px">
+            <h2>🗑️ Store löschen</h2>
+            <p style="color:var(--muted);font-size:.88rem;margin:1rem 0 1.5rem">Möchtest du diesen Store wirklich löschen?</p>
+            <input type="hidden" id="deleteId" />
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="closeModal('deleteModal')">Abbrechen</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">Löschen</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <main>
+        <h1>🏪 Stores</h1>
+        <p class="subtitle" th:text="|${stores.size()} Stores|">0 Stores</p>
+
+        <div class="admin-toolbar" id="adminToolbar">
+            <span>⚡ Admin-Modus – Stores verwalten</span>
+            <button class="btn-add" onclick="openCreateStore()">➕ Store hinzufügen</button>
+        </div>
+
+        <div class="grid" th:if="${!stores.isEmpty()}">
+            <div class="card" th:each="s : ${stores}" th:attr="data-id=${s.id}">
+                <div class="card-actions">
+                    <button class="btn-icon btn-delete" th:onclick="|openDeleteStore(${s.id})|" title="Löschen">🗑️</button>
+                </div>
+                <h3 th:text="|Store #${s.id}|">Store</h3>
+                <div class="phone" th:text="${s.phoneNumber}">+43 ...</div>
+                <div class="row">
+                    <div class="count-box">
+                        <div class="n" th:text="${s.filmIds.size()}">0</div>
+                        <div class="l">Filme</div>
+                    </div>
+                    <div class="count-box">
+                        <div class="n" th:text="${s.seriesIds.size()}">0</div>
+                        <div class="l">Serien</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p class="empty" th:if="${stores.isEmpty()}">Keine Stores gefunden.</p>
+    </main>
+
+    <script sec:authorize="hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=true;</script>
+    <script sec:authorize="!hasAnyRole('ADMIN','EMPLOYEE')">window.isUserAdmin=false;</script>
+    <script>
+        function isAdmin() { return window.isUserAdmin===true; }
+        function applyAdminState() {
+            const toolbar = document.getElementById('adminToolbar');
+            const actions = document.querySelectorAll('.card-actions');
+            if (isAdmin()) {
+                toolbar.classList.add('show');
+                actions.forEach(a => a.classList.add('show'));
+            } else {
+                toolbar.classList.remove('show');
+                actions.forEach(a => a.classList.remove('show'));
+            }
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+        function showToast(msg, type='success') {
+            const t = document.getElementById('toast');
+            t.textContent = (type==='success'?'✅ ':'❌ ') + msg;
+            t.className = 'toast ' + type + ' show';
+            setTimeout(() => t.classList.remove('show'), 3500);
+        }
+        function getSelectValues(id) {
+            const select = document.getElementById(id);
+            return Array.from(select.selectedOptions).map(opt => Number(opt.value));
+        }
+        function openCreateStore() {
+            document.getElementById('storePhone').value = '';
+            Array.from(document.getElementById('storeFilmIds').options).forEach(opt => opt.selected = false);
+            Array.from(document.getElementById('storeSeriesIds').options).forEach(opt => opt.selected = false);
+            openModal('storeModal');
+        }
+        function openDeleteStore(id) { document.getElementById('deleteId').value=id; openModal('deleteModal'); }
+
+        async function saveStore() {
+            const phone = document.getElementById('storePhone').value.trim();
+            if (!phone) { showToast('Telefonnummer ist erforderlich!','error'); return; }
+            const body = {
+                phoneNumber: { value: phone },
+                filmIds: getSelectValues('storeFilmIds'),
+                seriesIds: getSelectValues('storeSeriesIds')
+            };
+            try {
+                const res = await fetch('/api/v1.0.0/stores', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('storeModal'); showToast('Store erstellt!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        async function confirmDelete() {
+            const id = document.getElementById('deleteId').value;
+            try {
+                const res = await fetch(`/api/v1.0.0/stores/${id}`, {method:'DELETE'});
+                if (!res.ok) throw new Error(await res.text());
+                closeModal('deleteModal'); showToast('Store gelöscht!');
+                setTimeout(() => location.reload(), 1200);
+            } catch(e) { showToast('Fehler: '+e.message,'error'); }
+        }
+        applyAdminState();
+    </script>
+</body>
+</html>
