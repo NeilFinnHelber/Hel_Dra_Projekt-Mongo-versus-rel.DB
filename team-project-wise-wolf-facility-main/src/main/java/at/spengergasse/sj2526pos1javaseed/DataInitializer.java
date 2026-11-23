@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -22,24 +24,25 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Skewierbarer Seed für den Mongo-vs-Relational-Vergleich.
+ * skaliersbarer seed für den mongo vs relational vergleich
  *
- * Erzeugt pro Lauf Seed-Datensätze in allen Kern-Tabellen inklusive der
- * m:n-Beziehungen (store_films, store_series) und der Element-Collections
- * (film_genres, film_languages, series_genres, series_languages).
+ * - pro lauf seed datensätze in allen kern tabellen
+ *   inklusive m:n beziehungen (store_films, store_series)
+ *   und element collections (film_genres, film_languages, ...)
  *
- * Konfiguration (application.properties / Umgebungsvariablen):
- *   app.seed.enabled   - Seed deaktivierbar (default: true)
- *   app.seed.count     - Basis-Skalierung, erzeugt ca. 4-5x so viele Entities
- *                        über alle Tabellen (default: 1000, Zielbereich 10-100000)
- *   app.seed.chunk-size- Persistenz-Chunk-Größe; nach jedem Chunk wird
- *                        flush()+clear() ausgeführt, damit der
- *                        Persistence Context nicht vollläuft
+ * config (application.properties / env vars):
+ * - app.seed.enabled    seed abschaltbar (default true)
+ * - app.seed.count      basis skalierung, erzeugt ca 4-5x so viele
+ *                       entities über alle tabellen
+ *                       (default 1000, zielbereich 10-100000)
+ * - app.seed.chunk-size persistenz chunk größe, nach jedem chunk
+ *                       flush + clear damit der persistenzkontext
+ *                       nicht vollläuft
  *
- * Hinweis: Die Entities werden über EntityManager.persist() (nicht
- * JpaRepository.save()) geschrieben, weil alle IDs manuell vergeben werden.
- * save() würde wegen der nicht-leeren IDs merge() aufrufen und pro Entity
- * ein SELECT ausführen - das verfälscht die Schreib-Laufzeiten.
+ * hinweis: entities werden über entityManager.persist geschrieben
+ * nicht über JpaRepository.save, weil alle ids manuell vergeben sind
+ * save() würde wegen den ids merge() aufrufen und pro entity ein
+ * select ausführen - verfälscht die schreib zeiten
  */
 @Slf4j
 @Component
@@ -70,6 +73,7 @@ public class DataInitializer implements CommandLineRunner {
     private final OrderRepository orderRepository;
     private final Order_PlacementRepository orderPlacementRepository;
     private final BillingInformationRepository billingInformationRepository;
+    private final PlatformTransactionManager transactionManager;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -115,8 +119,11 @@ public class DataInitializer implements CommandLineRunner {
         seedOrderPlacements(orderCount, orderIds, customerIds);
         seedBillingInformation(billingCount, customerIds);
 
-        entityManager.flush();
-        entityManager.clear();
+        transactionManager.execute(status -> {
+            entityManager.flush();
+            entityManager.clear();
+            return null;
+        });
 
         log.info("Seeding finished in {} ms", (System.nanoTime() - t0) / 1_000_000);
     }
@@ -279,10 +286,12 @@ public class DataInitializer implements CommandLineRunner {
 
     private <T> void flushChunk(List<T> chunk) {
         if (chunk.isEmpty()) return;
-        for (T entity : chunk) {
-            entityManager.persist(entity);
-        }
-        entityManager.flush();
+        transactionManager.executeWithoutResult(status -> {
+            for (T entity : chunk) {
+                entityManager.persist(entity);
+            }
+            entityManager.flush();
+        });
         entityManager.clear();
         chunk.clear();
     }
@@ -299,8 +308,8 @@ public class DataInitializer implements CommandLineRunner {
         return Set.of(LANGUAGES[i % LANGUAGES.length], LANGUAGES[(i + 2) % LANGUAGES.length]);
     }
 
-    // Referenz-Stubs: nur die ID wird für FK-/Join-Tabellen-Inserts benötigt.
-    // Die Stubs werden nie persistiert und nach clear() nicht mehr verwendet.
+    // referenz-stubs: nur die id wird für fk/join inserts gebraucht
+    // werden nie persistiert und nach clear() auch nicht mehr benutzt
 
     private static Film filmRef(long id) {
         return Film.builder().filmid(new FilmId(id)).build();
