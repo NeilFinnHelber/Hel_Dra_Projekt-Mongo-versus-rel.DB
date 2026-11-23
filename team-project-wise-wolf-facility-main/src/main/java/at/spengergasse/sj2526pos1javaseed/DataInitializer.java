@@ -119,10 +119,9 @@ public class DataInitializer implements CommandLineRunner {
         seedOrderPlacements(orderCount, orderIds, customerIds);
         seedBillingInformation(billingCount, customerIds);
 
-        transactionManager.execute(status -> {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             entityManager.flush();
             entityManager.clear();
-            return null;
         });
 
         log.info("Seeding finished in {} ms", (System.nanoTime() - t0) / 1_000_000);
@@ -286,7 +285,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private <T> void flushChunk(List<T> chunk) {
         if (chunk.isEmpty()) return;
-        transactionManager.executeWithoutResult(status -> {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             for (T entity : chunk) {
                 entityManager.persist(entity);
             }

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * mongo variante vom benchmark interface
@@ -28,7 +29,7 @@ import java.util.List;
 @Repository
 public class MongoCustomerRepository implements PersistenceRepository {
 
-    static final String COLLECTION_NAME = "customers";
+    public static final String COLLECTION_NAME = "customers";
 
     private final MongoCollection<Document> customers;
     private final ObjectMapper objectMapper;
@@ -108,6 +109,46 @@ public class MongoCustomerRepository implements PersistenceRepository {
         return customers.deleteMany(Filters.eq("address.city", city)).getDeletedCount();
     }
 
+    // ---------- single doc krud (für /items rest api) ----------
+
+    /** find by _id, leer wenn nicht da */
+    public Optional<CustomerDocument> findById(long id) {
+        Document bson = customers.find(Filters.eq("_id", id)).first();
+        return Optional.ofNullable(bson).map(this::toDocumentModel);
+    }
+
+    /** insert ein doc, generiert _id wenn keins angegeben */
+    public CustomerDocument insert(CustomerDocument doc) {
+        Document bson = toDocument(doc);
+        if (!(bson.get("_id") instanceof Number)) {
+            bson.put("_id", nextId());
+        }
+        customers.insertOne(bson);
+        return toDocumentModel(bson);
+    }
+
+    /** ersetz ganzes doc (put semantik), false wenn id nicht existiert */
+    public boolean replace(long id, CustomerDocument doc) {
+        Document bson = toDocument(doc);
+        bson.put("_id", id);
+        return customers.replaceOne(Filters.eq("_id", id), bson).getMatchedCount() > 0;
+    }
+
+    /** delete by _id, false wenn nichts gelöscht */
+    public boolean deleteById(long id) {
+        return customers.deleteOne(Filters.eq("_id", id)).getDeletedCount() > 0;
+    }
+
+    /** höchste _id + 1, für auto ids */
+    private long nextId() {
+        Document last = customers.find()
+                .sort(Sorts.descending("_id"))
+                .limit(1)
+                .first();
+        Object id = last != null ? last.get("_id") : null;
+        return id instanceof Number n ? n.longValue() + 1 : 1L;
+    }
+
     // ---------- Mapping ----------
 
     private Document toDocument(CustomerDocument doc) {
@@ -116,6 +157,9 @@ public class MongoCustomerRepository implements PersistenceRepository {
             // mongo generiert _id selbst, also weghauen wenn null/leer
             if (bson.get("_id") == null) {
                 bson.remove("_id");
+            } else if (bson.get("_id") instanceof Number n) {
+                // _id immer als long speichern, damit typen konsistent bleiben
+                bson.put("_id", n.longValue());
             }
             return bson;
         } catch (JsonProcessingException e) {
