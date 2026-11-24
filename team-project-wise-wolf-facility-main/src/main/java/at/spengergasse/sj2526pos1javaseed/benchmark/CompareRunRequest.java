@@ -8,6 +8,8 @@ import java.util.List;
  * - scales: liste von skalierungen, z.b. [1000, 10000, 100000]
  *   (leer/null -> scale nehmen, default 1000)
  * - scale: einzelne skalierung, wird zu scales
+ * - index: true = nur mit index, false = nur ohne,
+ *   null/leer = BEIDE varianten pro skalierung (default)
  */
-public record CompareRunRequest(Integer scale, List<Integer> scales) {
+public record CompareRunRequest(Integer scale, List<Integer> scales, Boolean index) {
 }

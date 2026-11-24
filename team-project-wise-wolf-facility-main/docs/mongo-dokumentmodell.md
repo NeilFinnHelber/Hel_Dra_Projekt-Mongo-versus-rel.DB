@@ -81,6 +81,27 @@ immer gebündelt liest.
 }
 ```
 
+## Indizes (Benchmark)
+
+Auf den Feldern, die in den Find-Filtern und Sortierungen der
+Benchmark-Abfragen vorkommen, werden Indizes angelegt
+(`BenchmarkRunner.applyIndex`, automatisch pro Lauf, wird nach dem
+Lauf gedroppt bzw. vor dem naechsten Lauf neu erstellt):
+
+| Feld (Filter/Sort) | MongoDB | Relational (Postgres) |
+|---|---|---|
+| `address.city` | `bench_city_idx` auf `address.city` | `bench_customer_city_idx` auf `customer(address_city)` |
+| `nickname` (Sort + Update-Filter) | `bench_nick_idx` auf `nickname` | `bench_customer_nick_idx` auf `customer(nickname)` |
+
+- Find-Filter: `findByCity`, `findByCityProjection`,
+  `findByCityProjectionSorted` filtern alle auf `address.city`
+- Sortierung läuft auf `nickname`, Update-Filter
+  (`updateLastNameByNickname`) ebenfalls
+- Variante "mit/ohne Index" ist pro Lauf waehlbar:
+  `POST /tests/run {"index": true|false}` oder
+  `POST /tests/compare {"scales":[...], "index": true|false}`
+  (bei compare ohne `index`-Angabe laufen automatisch beide Varianten)
+
 ## Trade-offs (kurz)
 
 - **READ**: 1 Query statt Customer + Billings + Placements + Orders + Store
