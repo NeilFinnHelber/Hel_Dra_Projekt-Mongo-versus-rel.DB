@@ -81,9 +81,12 @@ public class JpaPersistenceRepository implements PersistenceRepository {
         if (doc.orderPlacements() != null) {
             int idx = 0;
             for (CustomerDocument.PlacementJson p : doc.orderPlacements()) {
-                Order order = ensureOrder(p.orderId(),
-                        p.store() != null ? p.store().storeId() : null,
-                        p.totalAmount());
+                CustomerDocument.OrderJson orderJson = p.order();
+                Order order = ensureOrder(
+                        orderJson != null ? orderJson.orderId() : null,
+                        orderJson != null && orderJson.store() != null
+                                ? orderJson.store().storeId() : null,
+                        orderJson != null ? orderJson.totalAmount() : null);
                 Order_Placement placement = Order_Placement.builder()
                         .id(new Order_PlacementId(doc.id() * 1_000_000L + idx++))
                         .orderDate(p.orderDate())
@@ -311,13 +314,18 @@ public class JpaPersistenceRepository implements PersistenceRepository {
     private CustomerDocument.PlacementJson toPlacementJson(Order_Placement op) {
         Order order = op.getOrder();
         Store store = order != null ? order.getStore() : null;
+        CustomerDocument.OrderJson orderJson = order != null
+                ? new CustomerDocument.OrderJson(
+                        order.getId().getId(),
+                        order.getOrderDate(),
+                        order.getTotalAmount(),
+                        store != null ? toStoreJson(store) : null)
+                : null;
         return new CustomerDocument.PlacementJson(
-                order != null ? order.getId().getId() : null,
+                orderJson,
                 op.getOrderDate(),
                 op.getOrderReturnDate(),
-                op.getActualReturnDate(),
-                order != null ? order.getTotalAmount() : null,
-                store != null ? toStoreJson(store) : null);
+                op.getActualReturnDate());
     }
 
     // store + m:n katalog komplett einbetten (store_films, store_series)

@@ -127,7 +127,7 @@ public class MongoCustomerRepository implements PersistenceRepository {
         List<Bson> pipeline = List.of(
                 Aggregates.unwind("$orderPlacements"),
                 Aggregates.group("$address.city",
-                        Accumulators.sum("total", "$orderPlacements.totalAmount")));
+                        Accumulators.sum("total", "$orderPlacements.order.totalAmount")));
         List<Document> rows = customers.aggregate(pipeline).into(new ArrayList<>());
         Map<String, BigDecimal> result = new LinkedHashMap<>();
         for (Document row : rows) {

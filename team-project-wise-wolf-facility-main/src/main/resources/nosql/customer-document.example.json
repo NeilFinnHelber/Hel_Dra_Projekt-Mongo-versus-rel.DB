@@ -20,12 +20,14 @@
   ],
   "orderPlacements": [
     {
-      "orderId": 1,
       "orderDate": "2020-01-01",
       "orderReturnDate": "2020-01-15",
       "actualReturnDate": "2020-01-11",
-      "totalAmount": 42.00,
-      "store": {
+      "order": {
+        "orderId": 1,
+        "orderDate": "2020-01-01T10:00:00",
+        "totalAmount": 42.00,
+        "store": {
         "storeId": 1,
         "phoneNumber": "+43 1 55500001",
         "films": [
@@ -49,6 +51,7 @@
             "genres": ["Comedy", "Thriller"]
           }
         ]
+        }
       }
     }
   ]

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -42,15 +43,19 @@ public record CustomerDocument(
 
     /**
      * verleih vorgang embedded
-     * store ist komplett eingebettet (mit film + series katalog),
-     * orderId bleibt als id weil orders geteilt werden könnten
+     * order + store komplett als sub dokumente, keine nackten ids
      */
-    public record PlacementJson(Long orderId,
+    public record PlacementJson(OrderJson order,
                                 LocalDate orderDate,
                                 LocalDate orderReturnDate,
-                                LocalDate actualReturnDate,
-                                BigDecimal totalAmount,
-                                StoreJson store) {
+                                LocalDate actualReturnDate) {
+    }
+
+    /** order embedded inkl. store + m:n katalog */
+    public record OrderJson(Long orderId,
+                            LocalDateTime orderDate,
+                            BigDecimal totalAmount,
+                            StoreJson store) {
     }
 
     /** store embedded inkl. m:n katalog (store_films, store_series) */

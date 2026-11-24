@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,19 +35,21 @@ class CustomerDocumentJsonTest {
                 new CustomerDocument.AddressJson("Seedstraße 1", "Wien", "1010", "Austria"),
                 List.of(new CustomerDocument.BillingJson("4000000000000042", "2028-05-01", 777)),
                 List.of(new CustomerDocument.PlacementJson(
-                        7L,
+                        new CustomerDocument.OrderJson(
+                                7L,
+                                LocalDateTime.of(2021, 3, 1, 10, 0),
+                                new BigDecimal("19.99"),
+                                new CustomerDocument.StoreJson(
+                                        3L, "+43 1 55500003",
+                                        List.of(new CustomerDocument.FilmJson(
+                                                11L, "Film 11", 2001, 95f,
+                                                List.of("German"), List.of("Action"))),
+                                        List.of(new CustomerDocument.SeriesJson(
+                                                21L, "Series 21", 2005, 8, 45f,
+                                                List.of("German"), List.of("Drama"))))),
                         LocalDate.of(2021, 3, 1),
                         LocalDate.of(2021, 3, 15),
-                        LocalDate.of(2021, 3, 10),
-                        new BigDecimal("19.99"),
-                        new CustomerDocument.StoreJson(
-                                3L, "+43 1 55500003",
-                                List.of(new CustomerDocument.FilmJson(
-                                        11L, "Film 11", 2001, 95f,
-                                        List.of("German"), List.of("Action"))),
-                                List.of(new CustomerDocument.SeriesJson(
-                                        21L, "Series 21", 2005, 8, 45f,
-                                        List.of("German"), List.of("Drama")))))));
+                        LocalDate.of(2021, 3, 10))));
 
         // pojo -> json -> bson (so wie toDocument)
         Document bson = Document.parse(objectMapper.writeValueAsString(doc));

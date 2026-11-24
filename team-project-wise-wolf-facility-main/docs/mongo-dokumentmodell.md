@@ -31,8 +31,9 @@ Pro Kunde existiert **genau ein Dokument**. Begründung:
 |---|---|---|
 | `customer.address_*` (1:1) | `address` | eingebettetes Objekt |
 | `billing_information` (1:n) | `billingInformation[]` | Array von Sub-Docs |
-| `order_placement` + `orders` (1:n) | `orderPlacements[]` | Array, Order-Felder denormalisiert (`orderDate`, `totalAmount`) |
-| `store` (n:1) | `orderPlacements[].store` | **eingebettetes Store-Objekt** |
+| `order_placement` (1:n) | `orderPlacements[]` | Array, Verleih-Daten (`orderDate`, `orderReturnDate`, `actualReturnDate`) |
+| `orders` (n:1) | `orderPlacements[].order` | **Order-Objekt embedded** (`orderId`, `orderDate`, `totalAmount`) |
+| `store` (n:1) | `orderPlacements[].order.store` | **eingebettetes Store-Objekt** |
 | `store_films` (m:n) | `store.films[]` | **Film-Sub-Docs embedded** |
 | `store_series` (m:n) | `store.series[]` | **Series-Sub-Docs embedded** |
 | `film_*`, `film_languages`, `film_genres` | `store.films[]` Felder | Titel, Jahr, Länge, Sprachen, Genres |
@@ -46,10 +47,10 @@ der Benchmark quantifizieren soll.
 
 ## Was referenziert bleibt
 
-- nur `orderId` in `orderPlacements` als skalare ID
-- Begründung: die Order-Entity ist die einzige noch "freie" Entität;
-  alle ihre leserelevanten Felder (`orderDate`, `totalAmount`, Store)
-  sind ohnehin embedded
+- **nichts** — das Modell ist zu 100% embedded. Sogar die Order ist
+  als Sub-Dokument in `orderPlacements[].order` gesteckt; `orderId`
+  existiert nur noch als Datenfeld innerhalb dieses Objekts, nicht
+  als Verweis auf eine andere Collection
 
 ## Beispiel-Dokument
 
@@ -76,12 +77,14 @@ der Benchmark quantifizieren soll.
   ],
   "orderPlacements": [
     {
-      "orderId": 1,
       "orderDate": "2020-01-01",
       "orderReturnDate": "2020-01-15",
       "actualReturnDate": "2020-01-11",
-      "totalAmount": 42.00,
-      "store": {
+      "order": {
+        "orderId": 1,
+        "orderDate": "2020-01-01T10:00:00",
+        "totalAmount": 42.00,
+        "store": {
         "storeId": 1,
         "phoneNumber": "+43 1 55500001",
         "films": [
@@ -105,6 +108,7 @@ der Benchmark quantifizieren soll.
             "genres": ["Comedy", "Thriller"]
           }
         ]
+        }
       }
     }
   ]

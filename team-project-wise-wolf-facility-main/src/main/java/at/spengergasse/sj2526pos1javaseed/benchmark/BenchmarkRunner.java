@@ -422,12 +422,16 @@ public class BenchmarkRunner {
                             "2028-01-01",
                             100 + i % 900)),
                     List.of(new CustomerDocument.PlacementJson(
-                            id, // orderId = doc id, damit unique (order_placement.order_id ist unique)
+                            // order komplett embedded (id + datum + betrag + store)
+                            new CustomerDocument.OrderJson(
+                                    id, // orderId = doc id, damit unique (order_placement.order_id ist unique)
+                                    LocalDate.of(2021, 1, 1).plusDays(i % 1500).atStartOfDay(),
+                                    BigDecimal.valueOf(5 + (i * 37) % 500).setScale(2, java.math.RoundingMode.HALF_UP),
+                                    store),
                             LocalDate.of(2021, 1, 1).plusDays(i % 1500),
                             LocalDate.of(2021, 1, 15).plusDays(i % 1500),
-                            i % 4 == 0 ? null : LocalDate.of(2021, 1, 10).plusDays(i % 1500),
-                            BigDecimal.valueOf(5 + (i * 37) % 500).setScale(2, java.math.RoundingMode.HALF_UP),
-                            store))));
+                            i % 4 == 0 ? null : LocalDate.of(2021, 1, 10).plusDays(i % 1500)
+                    ))));
         }
         return docs;
     }
