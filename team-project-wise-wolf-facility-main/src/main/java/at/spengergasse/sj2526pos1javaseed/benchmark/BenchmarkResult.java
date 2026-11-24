@@ -31,12 +31,14 @@ public class BenchmarkResult {
     private volatile String type = "run";
     private volatile Map<String, Long> relationalCounts = Map.of();
     private volatile Map<String, Long> mongoCounts = Map.of();
+    private volatile Map<String, Long> referencedCounts = Map.of();
     private volatile Map<String, Boolean> variantMatches = Map.of();
     private volatile Boolean countsMatch;
 
-    // aggregations ergebnisse beider seiten (stadt -> summe), nur compare
+    // aggregations ergebnisse der seiten (stadt -> summe), nur compare
     private volatile Map<String, BigDecimal> relationalAggregation = Map.of();
     private volatile Map<String, BigDecimal> mongoAggregation = Map.of();
+    private volatile Map<String, BigDecimal> referencedAggregation = Map.of();
 
     public BenchmarkResult(long id, String database, int scale, boolean indexVariant) {
         this.id = id;
@@ -59,27 +61,33 @@ public class BenchmarkResult {
     public String getType() { return type; }
     public Map<String, Long> getRelationalCounts() { return relationalCounts; }
     public Map<String, Long> getMongoCounts() { return mongoCounts; }
+    public Map<String, Long> getReferencedCounts() { return referencedCounts; }
     public Map<String, Boolean> getVariantMatches() { return variantMatches; }
     public Boolean getCountsMatch() { return countsMatch; }
     public Map<String, BigDecimal> getRelationalAggregation() { return relationalAggregation; }
     public Map<String, BigDecimal> getMongoAggregation() { return mongoAggregation; }
+    public Map<String, BigDecimal> getReferencedAggregation() { return referencedAggregation; }
 
     public void setType(String type) { this.type = type; }
 
     public void setCompareOutcome(Map<String, Long> relationalCounts,
                                   Map<String, Long> mongoCounts,
+                                  Map<String, Long> referencedCounts,
                                   Map<String, Boolean> variantMatches,
                                   boolean countsMatch) {
         this.relationalCounts = relationalCounts;
         this.mongoCounts = mongoCounts;
+        this.referencedCounts = referencedCounts;
         this.variantMatches = variantMatches;
         this.countsMatch = countsMatch;
     }
 
     public void setAggregationOutcome(Map<String, BigDecimal> relational,
-                                      Map<String, BigDecimal> mongo) {
+                                      Map<String, BigDecimal> mongo,
+                                      Map<String, BigDecimal> referenced) {
         this.relationalAggregation = relational;
         this.mongoAggregation = mongo;
+        this.referencedAggregation = referenced;
     }
 
     public void finish(Map<String, Long> durations, long insertedCount) {

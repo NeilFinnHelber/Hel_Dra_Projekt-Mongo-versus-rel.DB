@@ -3,6 +3,7 @@ package at.spengergasse.sj2526pos1javaseed.benchmark;
 import at.spengergasse.sj2526pos1javaseed.benchmark.jpa.JpaPersistenceRepository;
 import at.spengergasse.sj2526pos1javaseed.nosql.MongoCustomerRepository;
 import at.spengergasse.sj2526pos1javaseed.nosql.model.CustomerDocument;
+import at.spengergasse.sj2526pos1javaseed.nosql.ref.MongoReferencedRepository;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
@@ -11,6 +12,7 @@ import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.Sorts;
 import jakarta.annotation.PreDestroy;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -66,6 +68,7 @@ public class BenchmarkRunner {
 
     private final JpaPersistenceRepository jpaRepository;
     private final MongoCustomerRepository mongoRepository;
+    private final MongoReferencedRepository refRepository;
     private final MongoDatabase mongoDatabase;
     private final JdbcTemplate jdbcTemplate;
 
@@ -76,10 +79,12 @@ public class BenchmarkRunner {
 
     public BenchmarkRunner(JpaPersistenceRepository jpaRepository,
                            MongoCustomerRepository mongoRepository,
+                           MongoReferencedRepository refRepository,
                            MongoDatabase mongoDatabase,
                            JdbcTemplate jdbcTemplate) {
         this.jpaRepository = jpaRepository;
         this.mongoRepository = mongoRepository;
+        this.refRepository = refRepository;
         this.mongoDatabase = mongoDatabase;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -157,9 +162,11 @@ public class BenchmarkRunner {
 
     private void execute(BenchmarkResult result) {
         try {
-            PersistenceRepository repo = "mongo".equals(result.getDatabase())
-                    ? mongoRepository
-                    : jpaRepository;
+            PersistenceRepository repo = switch (result.getDatabase()) {
+                case "mongo" -> mongoRepository;
+                case "mongo-ref" -> refRepository;
+                default -> jpaRepository;
+            };
 
             // db zurücksetzen vor jedem lauf, sonst sind zeiten nicht vergleichbar
             resetBenchmarkData(result.getDatabase());
@@ -203,7 +210,15 @@ public class BenchmarkRunner {
     }
 
     private static String normalize(String database) {
-        if (database != null && database.toLowerCase().contains("mongo")) {
+        if (database == null) {
+            return "rel";
+        }
+        String d = database.toLowerCase();
+        // referenz-variante: mongo-normalisiert, z.b. "mongo-ref", "ref", "referencing"
+        if (d.contains("ref") || d.contains("referen")) {
+            return "mongo-ref";
+        }
+        if (d.contains("mongo")) {
             return "mongo";
         }
         return "rel";
@@ -218,12 +233,14 @@ public class BenchmarkRunner {
     private void executeCompare(BenchmarkResult result) {
         int scale = result.getScale();
         try {
-            // beide dbs resetten, sonst sind ergebnisse nicht vergleichbar
+            // alle drei dbs resetten, sonst sind ergebnisse nicht vergleichbar
             resetBenchmarkData("rel");
             resetBenchmarkData("mongo");
+            resetBenchmarkData("mongo-ref");
             // index varianten kommen aus dem request (mit/ohne index)
             applyIndex("rel", result.isIndexVariant());
             applyIndex("mongo", result.isIndexVariant());
+            applyIndex("mongo-ref", result.isIndexVariant());
 
             // gleiche id basis für beide seiten, sonst unterschiedliche docs
             long base = Math.max(idBase("rel"), idBase("mongo"));
@@ -237,15 +254,18 @@ public class BenchmarkRunner {
             for (String v : FIND_VARIANTS) {
                 long rb = findVariant(jpaRepository, v, limit).size();
                 long mb = findVariant(mongoRepository, v, limit).size();
-                baseCounts.put(v, new long[]{rb, mb});
+                long fb = findVariant(refRepository, v, limit).size();
+                baseCounts.put(v, new long[]{rb, mb, fb});
             }
 
             Map<String, Long> timings = new LinkedHashMap<>();
             timings.put("rel.insertBatchMs", time(() -> jpaRepository.insertBatch(docs, batchSize)));
             timings.put("mongo.insertBatchMs", time(() -> mongoRepository.insertBatch(docs, batchSize)));
+            timings.put("mongo-ref.insertBatchMs", time(() -> refRepository.insertBatch(docs, batchSize)));
 
             Map<String, Long> relCounts = new LinkedHashMap<>();
             Map<String, Long> mongoCounts = new LinkedHashMap<>();
+            Map<String, Long> refCounts = new LinkedHashMap<>();
             Map<String, Boolean> variantMatches = new LinkedHashMap<>();
             boolean allMatch = true;
 
@@ -260,13 +280,21 @@ public class BenchmarkRunner {
                 long mongoCount = findVariant(mongoRepository, v, limit).size();
                 long mongoMs = (System.nanoTime() - t0) / 1_000_000;
 
+                t0 = System.nanoTime();
+                long refCount = findVariant(refRepository, v, limit).size();
+                long refMs = (System.nanoTime() - t0) / 1_000_000;
+
                 timings.put("rel." + v + "Ms", relMs);
                 timings.put("mongo." + v + "Ms", mongoMs);
+                timings.put("mongo-ref." + v + "Ms", refMs);
                 relCounts.put(v, relCount);
                 mongoCounts.put(v, mongoCount);
+                refCounts.put(v, refCount);
 
                 // delta zum basis zähler, weil rel seed rows hat und mongo nicht
-                boolean match = (relCount - basePair[0]) == (mongoCount - basePair[1]);
+                // referenz-variante muss das gleiche delta liefern wie die anderen
+                boolean match = (relCount - basePair[0]) == (mongoCount - basePair[1])
+                        && (mongoCount - basePair[1]) == (refCount - basePair[2]);
                 variantMatches.put(v, match);
                 allMatch &= match;
             }
@@ -283,18 +311,26 @@ public class BenchmarkRunner {
             Map<String, BigDecimal> mongoAgg = mongoRepository.sumOrderTotalsByCity();
             long mongoAggMs = (System.nanoTime() - t0) / 1_000_000;
 
+            t0 = System.nanoTime();
+            Map<String, BigDecimal> refAgg = refRepository.sumOrderTotalsByCity();
+            long refAggMs = (System.nanoTime() - t0) / 1_000_000;
+
             timings.put("rel.aggregationMs", relAggMs);
             timings.put("mongo.aggregationMs", mongoAggMs);
+            timings.put("mongo-ref.aggregationMs", refAggMs);
 
             BigDecimal relBench = relAgg.get(BENCH_CITY);
             BigDecimal mongoBench = mongoAgg.get(BENCH_CITY);
-            boolean aggMatch = relBench != null && mongoBench != null
+            BigDecimal refBench = refAgg.get(BENCH_CITY);
+            boolean aggMatch = relBench != null && mongoBench != null && refBench != null
                     && relBench.subtract(mongoBench).abs()
+                            .compareTo(new BigDecimal("0.01")) <= 0
+                    && mongoBench.subtract(refBench).abs()
                             .compareTo(new BigDecimal("0.01")) <= 0;
             variantMatches.put("aggregation", aggMatch);
-            result.setAggregationOutcome(relAgg, mongoAgg);
+            result.setAggregationOutcome(relAgg, mongoAgg, refAgg);
 
-            result.setCompareOutcome(relCounts, mongoCounts, variantMatches, allMatch);
+            result.setCompareOutcome(relCounts, mongoCounts, refCounts, variantMatches, allMatch);
             result.finish(timings, docs.size());
             log.info("compare run {} (scale={}) finished: match={}, timings={}",
                     result.getId(), scale, allMatch, timings);
@@ -323,7 +359,53 @@ public class BenchmarkRunner {
      * seed daten bleiben unangetastet
      */
     private void resetBenchmarkData(String database) {
-        if ("mongo".equals(database)) {
+        if ("mongo-ref".equals(database)) {
+            // referenz modell: erst ids sammeln, dann kinder vor parents loeschen.
+            // id scheme: addressId == customerId, orderId = customer id (1:1 pro doc)
+            MongoCollection<Document> customers =
+                    mongoDatabase.getCollection(MongoReferencedRepository.CUSTOMERS);
+            MongoCollection<Document> placements =
+                    mongoDatabase.getCollection(MongoReferencedRepository.PLACEMENTS);
+
+            Bson benchCustomer = Filters.regex("nickname", Pattern.compile("^bench\\.user\\."));
+            List<Long> customerIds = customers.find(benchCustomer)
+                    .projection(com.mongodb.client.model.Projections.include("_id"))
+                    .into(new ArrayList<>())
+                    .stream()
+                    .map(d -> d.get("_id"))
+                    .filter(java.util.Objects::nonNull)
+                    .map(v -> ((Number) v).longValue())
+                    .toList();
+
+            // order ids aus den placements (placements.customerId -> orderId)
+            List<Long> orderIds = new ArrayList<>();
+            for (int i = 0; i < customerIds.size(); i += 10_000) {
+                List<Long> chunk = customerIds.subList(i, Math.min(i + 10_000, customerIds.size()));
+                placements.find(Filters.in("customerId", chunk))
+                        .projection(com.mongodb.client.model.Projections.include("orderId"))
+                        .forEach(d -> {
+                            Object oid = d.get("orderId");
+                            if (oid instanceof Number n) orderIds.add(n.longValue());
+                        });
+            }
+
+            // kind vor parent
+            deleteIn(customerIds, MongoReferencedRepository.BILLINGS, "customerId");
+            deleteIn(customerIds, MongoReferencedRepository.PLACEMENTS, "customerId");
+            deleteIn(orderIds, MongoReferencedRepository.ORDERS, "_id");
+            deleteIn(customerIds, MongoReferencedRepository.ADDRESSES, "_id");
+            customers.deleteMany(benchCustomer);
+
+            // shared katalog komplett weg, wird pro insertBatch neu aufgebaut
+            for (String name : List.of(
+                    MongoReferencedRepository.STORES,
+                    MongoReferencedRepository.FILMS,
+                    MongoReferencedRepository.SERIES,
+                    MongoReferencedRepository.STORE_FILMS,
+                    MongoReferencedRepository.STORE_SERIES)) {
+                mongoDatabase.getCollection(name).deleteMany(new Document());
+            }
+        } else if ("mongo".equals(database)) {
             MongoCollection<Document> collection =
                     mongoDatabase.getCollection(MongoCustomerRepository.COLLECTION_NAME);
             collection.deleteMany(Filters.or(
@@ -344,7 +426,21 @@ public class BenchmarkRunner {
     // ---------- index varianten ----------
 
     private void applyIndex(String database, boolean withIndex) {
-        if ("mongo".equals(database)) {
+        if ("mongo-ref".equals(database)) {
+            // index auf den feldern die in den finds/updates gebraucht werden:
+            // addresses.city (lookup filter), customers.nickname (sort+update),
+            // customers.addressId + placements/billings.customerId (joins)
+            applyRefIndex(withIndex, MongoReferencedRepository.ADDRESSES,
+                    Indexes.ascending("city"), "ref_addr_city_idx");
+            applyRefIndex(withIndex, MongoReferencedRepository.CUSTOMERS,
+                    Indexes.ascending("nickname"), "ref_cust_nick_idx");
+            applyRefIndex(withIndex, MongoReferencedRepository.CUSTOMERS,
+                    Indexes.ascending("addressId"), "ref_cust_addr_idx");
+            applyRefIndex(withIndex, MongoReferencedRepository.PLACEMENTS,
+                    Indexes.ascending("customerId"), "ref_place_cust_idx");
+            applyRefIndex(withIndex, MongoReferencedRepository.BILLINGS,
+                    Indexes.ascending("customerId"), "ref_bill_cust_idx");
+        } else if ("mongo".equals(database)) {
             MongoCollection<Document> collection =
                     mongoDatabase.getCollection(MongoCustomerRepository.COLLECTION_NAME);
             if (withIndex) {
@@ -377,10 +473,39 @@ public class BenchmarkRunner {
         }
     }
 
+    /** deleteMany mit {$in: ids} in chunks */
+    private void deleteIn(List<Long> ids, String collectionName, String field) {
+        if (ids.isEmpty()) return;
+        MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
+        for (int i = 0; i < ids.size(); i += 10_000) {
+            collection.deleteMany(Filters.in(field,
+                    ids.subList(i, Math.min(i + 10_000, ids.size()))));
+        }
+    }
+
     // ---------- id basis ----------
+
+    private void applyRefIndex(boolean withIndex, String collectionName, Bson indexKeys, String name) {
+        MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
+        if (withIndex) {
+            collection.createIndex(indexKeys, new IndexOptions().name(name));
+        } else {
+            dropIndexQuietly(collection, name);
+        }
+    }
 
     /** höchste vorhandene id, damit neue docs nicht mit bestehenden kollidieren */
     private long idBase(String database) {
+        if ("mongo-ref".equals(database)) {
+            MongoCollection<Document> collection =
+                    mongoDatabase.getCollection(MongoReferencedRepository.CUSTOMERS);
+            Document last = collection.find()
+                    .sort(Sorts.descending("_id"))
+                    .limit(1)
+                    .first();
+            Object id = last != null ? last.get("_id") : null;
+            return id instanceof Number n ? n.longValue() : 0L;
+        }
         if ("mongo".equals(database)) {
             MongoCollection<Document> collection =
                     mongoDatabase.getCollection(MongoCustomerRepository.COLLECTION_NAME);

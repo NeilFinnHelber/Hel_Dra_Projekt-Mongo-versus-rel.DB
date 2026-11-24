@@ -1,0 +1,92 @@
+{
+  "_comment": "referencing modell: eine collection pro entitaet, verknuepft ueber _id referenzen. m:n als join collections. feldnamen mit ref_ prefix.",
+  "ref_customers": [
+    {
+      "_id": 1,
+      "nickname": "seed.user.1",
+      "email": "seed.user.1@example.com",
+      "firstName": "Anna",
+      "lastName": "Huber1",
+      "permission": "Admin",
+      "addressId": 1
+    }
+  ],
+  "ref_addresses": [
+    {
+      "_id": 1,
+      "street": "Seedstraße 1",
+      "city": "Wien",
+      "zipCode": "1001",
+      "country": "Austria"
+    }
+  ],
+  "ref_billings": [
+    {
+      "_id": 1001,
+      "customerId": 1,
+      "cardNumber": "4000000000000000",
+      "expirationDate": "2027-01-01",
+      "cvv": 100
+    }
+  ],
+  "ref_order_placements": [
+    {
+      "_id": 1001,
+      "customerId": 1,
+      "orderId": 1,
+      "orderDate": "2020-01-01",
+      "orderReturnDate": "2020-01-15",
+      "actualReturnDate": "2020-01-11"
+    }
+  ],
+  "ref_orders": [
+    {
+      "_id": 1,
+      "storeId": 1,
+      "orderDate": "2020-01-01T10:00:00",
+      "totalAmount": "42.00"
+    }
+  ],
+  "ref_stores": [
+    {
+      "_id": 1,
+      "phoneNumber": "+43 1 55500001"
+    }
+  ],
+  "ref_store_films": [
+    { "_id": 100101, "storeId": 1, "filmId": 101 },
+    { "_id": 100102, "storeId": 1, "filmId": 102 }
+  ],
+  "ref_films": [
+    {
+      "_id": 101,
+      "title": "Film 101",
+      "releaseYear": 1991,
+      "length": 91.0,
+      "languages": ["German", "English"],
+      "genres": ["Action", "Drama"]
+    },
+    {
+      "_id": 102,
+      "title": "Film 102",
+      "releaseYear": 1992,
+      "length": 92.0,
+      "languages": ["German"],
+      "genres": ["Comedy"]
+    }
+  ],
+  "ref_store_series": [
+    { "_id": 200101, "storeId": 1, "seriesId": 201 }
+  ],
+  "ref_series": [
+    {
+      "_id": 201,
+      "title": "Series 201",
+      "releaseYear": 1996,
+      "episodes": 7,
+      "length": 41.0,
+      "languages": ["German"],
+      "genres": ["Comedy", "Thriller"]
+    }
+  ]
+}
