@@ -8,6 +8,7 @@
 // aufruf:
 //   k6 run k6/benchmark.js                                  # benchmark, mongo, 1000
 //   BASE_URL=http://localhost:8080 MODE=benchmark DATABASE=rel SCALE=10000 INDEX=true k6 run k6/benchmark.js
+//   MODE=compare SCALES=1000,10000,100000 k6 run k6/benchmark.js
 //   MODE=crud VUS=10 DURATION=30s k6 run k6/benchmark.js
 //
 // output: benchmark-results.json + benchmark-results.csv landen im cwd
@@ -25,6 +26,8 @@ const VUS = Number(__ENV.VUS || 5);
 const DURATION = __ENV.DURATION || '30s';
 const POLL_S = Number(__ENV.POLL_S || 5);
 const MAX_WAIT_S = Number(__ENV.MAX_WAIT_S || 7200);
+// skalierungen für compare modus, kommagetrennt
+const SCALES = (__ENV.SCALES || '1000').split(',').map(Number);
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -48,7 +51,21 @@ export const options =
           checks: ['rate>0.95'],
         },
       }
-    : {
+    : MODE === 'compare'
+      ? {
+          scenarios: {
+            compare: {
+              executor: 'per-vu-iterations',
+              vus: 1,
+              iterations: 1,
+              exec: 'compareFlow',
+            },
+          },
+          thresholds: {
+            http_req_failed: ['rate<0.01'],
+          },
+        }
+      : {
         scenarios: {
           benchmark: {
             executor: 'per-vu-iterations',
@@ -87,6 +104,53 @@ export function benchmarkFlow() {
   const run = res.json();
   console.log(`benchmark run ${run.id} gestartet (db=${DATABASE}, scale=${SCALE}, index=${INDEX})`);
 
+  const final = waitForResult(run.id);
+  if (!final) {
+    console.error(`run ${run.id} timeout nach ${MAX_WAIT_S}s`);
+    return;
+  }
+
+  reportResult(final);
+}
+
+// ---------- compare modus ----------
+// postet /tests/compare mit allen SCALES, pollt jeden lauf bis fertig
+// ergebnis hat relationalCounts/mongoCounts/variantMatches zum vergleichen
+
+export function compareFlow() {
+  const res = http.post(
+    `${BASE_URL}/tests/compare`,
+    JSON.stringify({ scales: SCALES }),
+    { headers: JSON_HEADERS }
+  );
+
+  check(res, {
+    'compare started (202)': (r) => r.status === 202,
+    'compare returns runs': (r) => Array.isArray(r.json()) && r.json().length > 0,
+  });
+
+  if (res.status !== 202) {
+    console.error(`tests/compare failed: ${res.status} ${res.body}`);
+    return;
+  }
+
+  const runs = res.json();
+  console.log(`compare gestartet: ${SCALES.length} skalierungen -> run ids ${runs.map((r) => r.id)}`);
+
+  runs.forEach((run) => {
+    const final = waitForResult(run.id);
+    if (final) {
+      reportResult(final);
+    } else {
+      console.error(`compare run ${run.id} timeout nach ${MAX_WAIT_S}s`);
+    }
+  });
+}
+
+// ---------- helpers ----------
+
+// pollt /tests/results bis der run nicht mehr RUNNING ist
+function waitForResult(runId) {
   const deadline = Date.now() + MAX_WAIT_S * 1000;
   let final = null;
 
@@ -97,27 +161,32 @@ export function benchmarkFlow() {
     check(rr, { 'results ok': (r) => r.status === 200 });
 
     const runs = rr.json() || [];
-    final = runs.find((x) => x.id === run.id);
+    final = runs.find((x) => x.id === runId);
 
     if (final && final.status !== 'RUNNING') {
       break;
     }
-    console.log(`run ${run.id} noch am laufen ...`);
+    console.log(`run ${runId} noch am laufen ...`);
   }
 
-  if (!final) {
-    console.error(`run ${run.id} timeout nach ${MAX_WAIT_S}s`);
-    return;
-  }
+  return final && final.status !== 'RUNNING' ? final : null;
+}
 
+function reportResult(final) {
   benchmarkResults.push(final);
 
   if (final.status === 'FAILED') {
-    console.error(`run ${run.id} FAILED: ${final.error}`);
-  } else {
-    console.log(`run ${run.id} fertig, status=${final.status}`);
-    console.log(`operation zeiten (ms): ${JSON.stringify(final.durationsMs)}`);
+    console.error(`run ${final.id} FAILED: ${final.error}`);
+    return;
   }
+
+  console.log(`run ${final.id} fertig, status=${final.status}, typ=${final.type || 'run'}`);
+  if (final.type === 'compare') {
+    console.log(`counts rel:   ${JSON.stringify(final.relationalCounts)}`);
+    console.log(`counts mongo: ${JSON.stringify(final.mongoCounts)}`);
+    console.log(`variant matches: ${JSON.stringify(final.variantMatches)} -> countsMatch=${final.countsMatch}`);
+  }
+  console.log(`operation zeiten (ms): ${JSON.stringify(final.durationsMs)}`);
 }
 
 // ---------- crud modus ----------

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -101,6 +102,37 @@ public class BenchmarkRunner {
         return List.copyOf(results);
     }
 
+    /**
+     * compare lauf(e): gleicher datensatz in beide dbs,
+     * 4 find varianten auf beiden seiten timen + ergebnisanzahl vergleichen
+     * eine BenchmarkResult pro skalierung, laufen hintereinander (single thread)
+     */
+    public List<BenchmarkResult> startCompare(CompareRunRequest request) {
+        List<Integer> scales = normalizeScales(request);
+        List<BenchmarkResult> out = new ArrayList<>(scales.size());
+        for (int s : scales) {
+            BenchmarkResult result = new BenchmarkResult(idSeq.incrementAndGet(), "both", s, false);
+            result.setType("compare");
+            results.add(result);
+            out.add(result);
+            executor.submit(() -> executeCompare(result));
+        }
+        return out;
+    }
+
+    private List<Integer> normalizeScales(CompareRunRequest request) {
+        if (request != null && request.scales() != null && !request.scales().isEmpty()) {
+            return request.scales().stream()
+                    .filter(Objects::nonNull)
+                    .map(s -> Math.min(Math.max(s, 1), MAX_SCALE))
+                    .toList();
+        }
+        int scale = request != null && request.scale() != null
+                ? request.scale()
+                : DEFAULT_SCALE;
+        return List.of(Math.min(Math.max(scale, 1), MAX_SCALE));
+    }
+
     @PreDestroy
     void shutdown() {
         executor.shutdownNow();
@@ -160,6 +192,89 @@ public class BenchmarkRunner {
             return "mongo";
         }
         return "rel";
+    }
+
+    // ---------- compare durchlauf ----------
+
+    private static final String[] FIND_VARIANTS = {
+            "findAll", "findByCity", "findByCityProjection", "findByCityProjectionSorted"
+    };
+
+    private void executeCompare(BenchmarkResult result) {
+        int scale = result.getScale();
+        try {
+            // beide dbs resetten, sonst sind ergebnisse nicht vergleichbar
+            resetBenchmarkData("rel");
+            resetBenchmarkData("mongo");
+            applyIndex("rel", false);
+            applyIndex("mongo", false);
+
+            // gleiche id basis für beide seiten, sonst unterschiedliche docs
+            long base = Math.max(idBase("rel"), idBase("mongo"));
+            List<CustomerDocument> docs = generateDocuments(scale, base);
+            int batchSize = Math.min(INSERT_BATCH_SIZE, scale);
+            // limit > scale + seed, damit findAll auf rel nicht gecappt wird
+            int limit = scale + 10_000;
+
+            // basis zähler VOR dem insert (findAll hat auf rel seed rows)
+            Map<String, long[]> baseCounts = new LinkedHashMap<>();
+            for (String v : FIND_VARIANTS) {
+                long rb = findVariant(jpaRepository, v, limit).size();
+                long mb = findVariant(mongoRepository, v, limit).size();
+                baseCounts.put(v, new long[]{rb, mb});
+            }
+
+            Map<String, Long> timings = new LinkedHashMap<>();
+            timings.put("rel.insertBatchMs", time(() -> jpaRepository.insertBatch(docs, batchSize)));
+            timings.put("mongo.insertBatchMs", time(() -> mongoRepository.insertBatch(docs, batchSize)));
+
+            Map<String, Long> relCounts = new LinkedHashMap<>();
+            Map<String, Long> mongoCounts = new LinkedHashMap<>();
+            Map<String, Boolean> variantMatches = new LinkedHashMap<>();
+            boolean allMatch = true;
+
+            for (String v : FIND_VARIANTS) {
+                long[] basePair = baseCounts.get(v);
+
+                long t0 = System.nanoTime();
+                long relCount = findVariant(jpaRepository, v, limit).size();
+                long relMs = (System.nanoTime() - t0) / 1_000_000;
+
+                t0 = System.nanoTime();
+                long mongoCount = findVariant(mongoRepository, v, limit).size();
+                long mongoMs = (System.nanoTime() - t0) / 1_000_000;
+
+                timings.put("rel." + v + "Ms", relMs);
+                timings.put("mongo." + v + "Ms", mongoMs);
+                relCounts.put(v, relCount);
+                mongoCounts.put(v, mongoCount);
+
+                // delta zum basis zähler, weil rel seed rows hat und mongo nicht
+                boolean match = (relCount - basePair[0]) == (mongoCount - basePair[1]);
+                variantMatches.put(v, match);
+                allMatch &= match;
+            }
+
+            result.setCompareOutcome(relCounts, mongoCounts, variantMatches, allMatch);
+            result.finish(timings, docs.size());
+            log.info("compare run {} (scale={}) finished: match={}, timings={}",
+                    result.getId(), scale, allMatch, timings);
+        } catch (Exception e) {
+            log.error("compare run {} failed", result.getId(), e);
+            result.fail(e.getMessage());
+        }
+    }
+
+    /** führt je nach name die passende find variantie aus */
+    private static List<?> findVariant(PersistenceRepository repo, String variant, int limit) {
+        return switch (variant) {
+            case "findAll" -> repo.findAll(limit);
+            case "findByCity" -> repo.findByCity(BENCH_CITY, limit);
+            case "findByCityProjection" -> repo.findByCityProjection(BENCH_CITY, limit);
+            case "findByCityProjectionSorted" ->
+                    repo.findByCityProjectionSorted(BENCH_CITY, true, limit);
+            default -> throw new IllegalArgumentException("unbekannte variant " + variant);
+        };
     }
 
     // ---------- reset ----------

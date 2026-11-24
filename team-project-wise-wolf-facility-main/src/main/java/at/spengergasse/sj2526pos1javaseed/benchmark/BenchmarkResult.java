@@ -26,6 +26,13 @@ public class BenchmarkResult {
     private volatile long insertedCount;
     private volatile Map<String, Long> durationsMs = Map.of();
 
+    // nur für compare-läufe: art des runs + ergebnisanzahlen beider seiten
+    private volatile String type = "run";
+    private volatile Map<String, Long> relationalCounts = Map.of();
+    private volatile Map<String, Long> mongoCounts = Map.of();
+    private volatile Map<String, Boolean> variantMatches = Map.of();
+    private volatile Boolean countsMatch;
+
     public BenchmarkResult(long id, String database, int scale, boolean indexVariant) {
         this.id = id;
         this.database = database;
@@ -44,6 +51,23 @@ public class BenchmarkResult {
     public String getError() { return error; }
     public long getInsertedCount() { return insertedCount; }
     public Map<String, Long> getDurationsMs() { return durationsMs; }
+    public String getType() { return type; }
+    public Map<String, Long> getRelationalCounts() { return relationalCounts; }
+    public Map<String, Long> getMongoCounts() { return mongoCounts; }
+    public Map<String, Boolean> getVariantMatches() { return variantMatches; }
+    public Boolean getCountsMatch() { return countsMatch; }
+
+    public void setType(String type) { this.type = type; }
+
+    public void setCompareOutcome(Map<String, Long> relationalCounts,
+                                  Map<String, Long> mongoCounts,
+                                  Map<String, Boolean> variantMatches,
+                                  boolean countsMatch) {
+        this.relationalCounts = relationalCounts;
+        this.mongoCounts = mongoCounts;
+        this.variantMatches = variantMatches;
+        this.countsMatch = countsMatch;
+    }
 
     public void finish(Map<String, Long> durations, long insertedCount) {
         this.durationsMs = durations;
