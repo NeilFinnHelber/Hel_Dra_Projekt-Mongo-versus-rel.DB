@@ -81,7 +81,12 @@ public class JpaPersistenceRepository implements PersistenceRepository {
         if (doc.orderPlacements() != null) {
             int idx = 0;
             for (CustomerDocument.PlacementJson p : doc.orderPlacements()) {
-                Order order = ensureOrder(p.orderId(), p.storeId());
+                CustomerDocument.OrderJson orderJson = p.order();
+                Order order = ensureOrder(
+                        orderJson != null ? orderJson.orderId() : null,
+                        orderJson != null && orderJson.store() != null
+                                ? orderJson.store().storeId() : null,
+                        orderJson != null ? orderJson.totalAmount() : null);
                 Order_Placement placement = Order_Placement.builder()
                         .id(new Order_PlacementId(doc.id() * 1_000_000L + idx++))
                         .orderDate(p.orderDate())
@@ -96,19 +101,26 @@ public class JpaPersistenceRepository implements PersistenceRepository {
     }
 
     // stellt sicher dass order/store zeilen existieren (fk pflicht)
-    private Order ensureOrder(Long orderId, Long storeId) {
+    // totalAmount kommt aus dem placement, sonst bleibt order summen auf 0
+    private Order ensureOrder(Long orderId, Long storeId, BigDecimal totalAmount) {
         if (orderId == null) {
             return null;
         }
         Order order = entityManager.find(Order.class, new OrderId(orderId));
         if (order != null) {
+            // order_id ist unique pro placement, also gehört der betrag zu
+            // genau diesem placement - alte runs mit betrag 0 werden repariert
+            if (totalAmount != null && order.getTotalAmount() != null
+                    && order.getTotalAmount().compareTo(totalAmount) != 0) {
+                order.setTotalAmount(totalAmount);
+            }
             return order;
         }
         Store store = ensureStore(storeId != null ? storeId : 1L);
         order = Order.builder()
                 .id(new OrderId(orderId))
                 .orderDate(LocalDateTime.now())
-                .totalAmount(BigDecimal.ZERO)
+                .totalAmount(totalAmount != null ? totalAmount : BigDecimal.ZERO)
                 .store(store)
                 .build();
         entityManager.persist(order);
@@ -221,6 +233,27 @@ public class JpaPersistenceRepository implements PersistenceRepository {
         return deleted;
     }
 
+    // ---------- Aggregation ----------
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> sumOrderTotalsByCity() {
+        // group by über placement -> customer.city, sum über order.totalAmount
+        List<Object[]> rows = entityManager.createQuery(
+                        "select op.customer.address.city, sum(op.order.totalAmount) " +
+                                "from Order_Placement op " +
+                                "group by op.customer.address.city",
+                        Object[].class)
+                .getResultList();
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            String city = (String) row[0];
+            BigDecimal sum = row[1] instanceof BigDecimal bd ? bd : BigDecimal.ZERO;
+            result.put(city, sum.setScale(2, java.math.RoundingMode.HALF_UP));
+        }
+        return result;
+    }
+
     // ---------- Entity -> Document mapping ----------
 
     private List<CustomerDocument> toDocuments(List<Customer> customers) {
@@ -280,13 +313,59 @@ public class JpaPersistenceRepository implements PersistenceRepository {
 
     private CustomerDocument.PlacementJson toPlacementJson(Order_Placement op) {
         Order order = op.getOrder();
+        Store store = order != null ? order.getStore() : null;
+        CustomerDocument.OrderJson orderJson = order != null
+                ? new CustomerDocument.OrderJson(
+                        order.getId().getId(),
+                        order.getOrderDate(),
+                        order.getTotalAmount(),
+                        store != null ? toStoreJson(store) : null)
+                : null;
         return new CustomerDocument.PlacementJson(
-                order != null ? order.getId().getId() : null,
+                orderJson,
                 op.getOrderDate(),
                 op.getOrderReturnDate(),
-                op.getActualReturnDate(),
-                order != null ? order.getTotalAmount() : null,
-                order != null && order.getStore() != null ? order.getStore().getStoreId().getId() : null);
+                op.getActualReturnDate());
+    }
+
+    // store + m:n katalog komplett einbetten (store_films, store_series)
+    private CustomerDocument.StoreJson toStoreJson(Store store) {
+        return new CustomerDocument.StoreJson(
+                store.getStoreId() != null ? store.getStoreId().getId() : null,
+                store.getPhoneNumber() != null ? store.getPhoneNumber().getValue() : null,
+                store.getFilms() != null
+                        ? store.getFilms().stream().map(this::toFilmJson).toList()
+                        : List.of(),
+                store.getSeries() != null
+                        ? store.getSeries().stream().map(this::toSeriesJson).toList()
+                        : List.of());
+    }
+
+    private CustomerDocument.FilmJson toFilmJson(Film f) {
+        return new CustomerDocument.FilmJson(
+                f.getFilmid() != null ? f.getFilmid().getId() : null,
+                f.getTitle(),
+                f.getRelease_year(),
+                f.getLength(),
+                names(f.getLanguages()),
+                names(f.getGenres()));
+    }
+
+    private CustomerDocument.SeriesJson toSeriesJson(Series s) {
+        return new CustomerDocument.SeriesJson(
+                s.getSeriesid() != null ? s.getSeriesid().getId() : null,
+                s.getTitle(),
+                s.getRelease_year(),
+                s.getEpisodes(),
+                s.getLength(),
+                names(s.getLanguages()),
+                names(s.getGenres()));
+    }
+
+    private static List<String> names(Set<? extends Enum<?>> values) {
+        return values != null
+                ? values.stream().map(Enum::name).toList()
+                : List.of();
     }
 
     private CustomerDocument.AddressJson toAddressJson(Address address) {

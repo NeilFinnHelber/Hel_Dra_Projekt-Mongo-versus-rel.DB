@@ -271,6 +271,29 @@ public class BenchmarkRunner {
                 allMatch &= match;
             }
 
+            // ---------- aggregation: summe order totals pro stadt ----------
+            // mongo: $unwind + $group, jpa: group by + sum (identisches ergebnis)
+            // vergleich über benchmarkstadt bucket, weil rel seed daten hat
+            // die mongo seite nicht kennt
+            long t0 = System.nanoTime();
+            Map<String, BigDecimal> relAgg = jpaRepository.sumOrderTotalsByCity();
+            long relAggMs = (System.nanoTime() - t0) / 1_000_000;
+
+            t0 = System.nanoTime();
+            Map<String, BigDecimal> mongoAgg = mongoRepository.sumOrderTotalsByCity();
+            long mongoAggMs = (System.nanoTime() - t0) / 1_000_000;
+
+            timings.put("rel.aggregationMs", relAggMs);
+            timings.put("mongo.aggregationMs", mongoAggMs);
+
+            BigDecimal relBench = relAgg.get(BENCH_CITY);
+            BigDecimal mongoBench = mongoAgg.get(BENCH_CITY);
+            boolean aggMatch = relBench != null && mongoBench != null
+                    && relBench.subtract(mongoBench).abs()
+                            .compareTo(new BigDecimal("0.01")) <= 0;
+            variantMatches.put("aggregation", aggMatch);
+            result.setAggregationOutcome(relAgg, mongoAgg);
+
             result.setCompareOutcome(relCounts, mongoCounts, variantMatches, allMatch);
             result.finish(timings, docs.size());
             log.info("compare run {} (scale={}) finished: match={}, timings={}",
@@ -376,6 +399,9 @@ public class BenchmarkRunner {
     // ---------- doc generierung ----------
 
     private List<CustomerDocument> generateDocuments(int scale, long idBase) {
+        // store wird pro placement komplett eingebettet (unlogisch, aber
+        // genau der punkt: gleiche daten, embedded vs normalized)
+        CustomerDocument.StoreJson store = benchStore();
         List<CustomerDocument> docs = new ArrayList<>(scale);
         for (int i = 0; i < scale; i++) {
             long id = idBase + i + 1;
@@ -396,13 +422,34 @@ public class BenchmarkRunner {
                             "2028-01-01",
                             100 + i % 900)),
                     List.of(new CustomerDocument.PlacementJson(
-                            id, // orderId = doc id, damit unique (order_placement.order_id ist unique)
+                            // order komplett embedded (id + datum + betrag + store)
+                            new CustomerDocument.OrderJson(
+                                    id, // orderId = doc id, damit unique (order_placement.order_id ist unique)
+                                    LocalDate.of(2021, 1, 1).plusDays(i % 1500).atStartOfDay(),
+                                    BigDecimal.valueOf(5 + (i * 37) % 500).setScale(2, java.math.RoundingMode.HALF_UP),
+                                    store),
                             LocalDate.of(2021, 1, 1).plusDays(i % 1500),
                             LocalDate.of(2021, 1, 15).plusDays(i % 1500),
-                            i % 4 == 0 ? null : LocalDate.of(2021, 1, 10).plusDays(i % 1500),
-                            BigDecimal.valueOf(5 + (i * 37) % 500).setScale(2, java.math.RoundingMode.HALF_UP),
-                            1L))));
+                            i % 4 == 0 ? null : LocalDate.of(2021, 1, 10).plusDays(i % 1500)
+                    ))));
         }
         return docs;
+    }
+
+    /** synthetischer store mit 10 films + 10 series embedded (wie seedStores) */
+    private static CustomerDocument.StoreJson benchStore() {
+        List<CustomerDocument.FilmJson> films = new ArrayList<>();
+        List<CustomerDocument.SeriesJson> series = new ArrayList<>();
+        for (int k = 0; k < 10; k++) {
+            long fid = 1000L + k;
+            films.add(new CustomerDocument.FilmJson(
+                    fid, "Bench Film " + fid, 1990 + k, 90f + k,
+                    List.of("German", "English"), List.of("Action", "Drama")));
+            long sid = 2000L + k;
+            series.add(new CustomerDocument.SeriesJson(
+                    sid, "Bench Series " + sid, 1995 + k, 6 + k, 40f + k,
+                    List.of("German"), List.of("Comedy", "Thriller")));
+        }
+        return new CustomerDocument.StoreJson(1L, "+43 1 55500001", films, series);
     }
 }
