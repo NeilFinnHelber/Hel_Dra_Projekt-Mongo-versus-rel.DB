@@ -269,24 +269,36 @@ public class JpaPersistenceRepository implements PersistenceRepository {
                 .toList();
     }
 
+    // postgres hat ein limit von 65535 query parametern,
+    // also IN listen in chunks aufteilen (scale 100k hat >100k customer ids)
+    private static final int CUSTOMER_CHUNK = 10_000;
+
     private Map<Long, List<BillingInformation>> loadBillings(List<Customer> customers) {
-        List<BillingInformation> list = entityManager.createQuery(
-                        "select b from BillingInformation b where b.customer in :customers", BillingInformation.class)
-                .setParameter("customers", customers)
-                .getResultList();
-        return list.stream().collect(Collectors.groupingBy(
-                b -> b.getCustomer().getId().getId()));
+        Map<Long, List<BillingInformation>> out = new java.util.HashMap<>();
+        for (int i = 0; i < customers.size(); i += CUSTOMER_CHUNK) {
+            List<Customer> chunk = customers.subList(i, Math.min(i + CUSTOMER_CHUNK, customers.size()));
+            entityManager.createQuery(
+                            "select b from BillingInformation b where b.customer in :customers", BillingInformation.class)
+                    .setParameter("customers", chunk)
+                    .getResultList()
+                    .forEach(b -> out.computeIfAbsent(b.getCustomer().getId().getId(), k -> new ArrayList<>()).add(b));
+        }
+        return out;
     }
 
     private Map<Long, List<Order_Placement>> loadPlacements(List<Customer> customers) {
-        List<Order_Placement> list = entityManager.createQuery(
-                        "select op from Order_Placement op " +
-                                "join fetch op.order o join fetch o.store " +
-                                "where op.customer in :customers", Order_Placement.class)
-                .setParameter("customers", customers)
-                .getResultList();
-        return list.stream().collect(Collectors.groupingBy(
-                op -> op.getCustomer().getId().getId()));
+        Map<Long, List<Order_Placement>> out = new java.util.HashMap<>();
+        for (int i = 0; i < customers.size(); i += CUSTOMER_CHUNK) {
+            List<Customer> chunk = customers.subList(i, Math.min(i + CUSTOMER_CHUNK, customers.size()));
+            entityManager.createQuery(
+                            "select op from Order_Placement op " +
+                                    "join fetch op.order o join fetch o.store " +
+                                    "where op.customer in :customers", Order_Placement.class)
+                    .setParameter("customers", chunk)
+                    .getResultList()
+                    .forEach(op -> out.computeIfAbsent(op.getCustomer().getId().getId(), k -> new ArrayList<>()).add(op));
+        }
+        return out;
     }
 
     private CustomerDocument toDocument(Customer c,
