@@ -14,6 +14,7 @@ import java.util.List;
  * - pro kunde genau ein dokument mit adresse + billing + placements
  * - kein nachladen von mehreren collections wie bei relational
  * - bsp dokument: src/main/resources/nosql/customer-document.example.json
+ * - modell doku: docs/mongo-dokumentmodell.md
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CustomerDocument(
