@@ -1,5 +1,6 @@
 package at.spengergasse.sj2526pos1javaseed.benchmark;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 
@@ -33,6 +34,10 @@ public class BenchmarkResult {
     private volatile Map<String, Boolean> variantMatches = Map.of();
     private volatile Boolean countsMatch;
 
+    // aggregations ergebnisse beider seiten (stadt -> summe), nur compare
+    private volatile Map<String, BigDecimal> relationalAggregation = Map.of();
+    private volatile Map<String, BigDecimal> mongoAggregation = Map.of();
+
     public BenchmarkResult(long id, String database, int scale, boolean indexVariant) {
         this.id = id;
         this.database = database;
@@ -56,6 +61,8 @@ public class BenchmarkResult {
     public Map<String, Long> getMongoCounts() { return mongoCounts; }
     public Map<String, Boolean> getVariantMatches() { return variantMatches; }
     public Boolean getCountsMatch() { return countsMatch; }
+    public Map<String, BigDecimal> getRelationalAggregation() { return relationalAggregation; }
+    public Map<String, BigDecimal> getMongoAggregation() { return mongoAggregation; }
 
     public void setType(String type) { this.type = type; }
 
@@ -67,6 +74,12 @@ public class BenchmarkResult {
         this.mongoCounts = mongoCounts;
         this.variantMatches = variantMatches;
         this.countsMatch = countsMatch;
+    }
+
+    public void setAggregationOutcome(Map<String, BigDecimal> relational,
+                                      Map<String, BigDecimal> mongo) {
+        this.relationalAggregation = relational;
+        this.mongoAggregation = mongo;
     }
 
     public void finish(Map<String, Long> durations, long insertedCount) {

@@ -7,15 +7,22 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Accumulators;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -107,6 +114,31 @@ public class MongoCustomerRepository implements PersistenceRepository {
     @Override
     public long deleteByCity(String city) {
         return customers.deleteMany(Filters.eq("address.city", city)).getDeletedCount();
+    }
+
+    // ---------- Aggregation ----------
+
+    /**
+     * $unwind orderPlacements + $group sum(totalAmount) by address.city
+     * docs ohne placements fallen durch unwind raus (summe 0, korrekt)
+     */
+    @Override
+    public Map<String, BigDecimal> sumOrderTotalsByCity() {
+        List<Bson> pipeline = List.of(
+                Aggregates.unwind("$orderPlacements"),
+                Aggregates.group("$address.city",
+                        Accumulators.sum("total", "$orderPlacements.totalAmount")));
+        List<Document> rows = customers.aggregate(pipeline).into(new ArrayList<>());
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        for (Document row : rows) {
+            String city = row.getString("_id");
+            Object total = row.get("total");
+            BigDecimal sum = total instanceof Number n
+                    ? BigDecimal.valueOf(n.doubleValue())
+                    : BigDecimal.ZERO;
+            result.put(city, sum.setScale(2, RoundingMode.HALF_UP));
+        }
+        return result;
     }
 
     // ---------- single doc krud (für /items rest api) ----------

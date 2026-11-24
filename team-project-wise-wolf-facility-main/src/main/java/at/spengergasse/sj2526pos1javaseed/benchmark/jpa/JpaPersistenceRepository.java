@@ -81,7 +81,7 @@ public class JpaPersistenceRepository implements PersistenceRepository {
         if (doc.orderPlacements() != null) {
             int idx = 0;
             for (CustomerDocument.PlacementJson p : doc.orderPlacements()) {
-                Order order = ensureOrder(p.orderId(), p.storeId());
+                Order order = ensureOrder(p.orderId(), p.storeId(), p.totalAmount());
                 Order_Placement placement = Order_Placement.builder()
                         .id(new Order_PlacementId(doc.id() * 1_000_000L + idx++))
                         .orderDate(p.orderDate())
@@ -96,19 +96,26 @@ public class JpaPersistenceRepository implements PersistenceRepository {
     }
 
     // stellt sicher dass order/store zeilen existieren (fk pflicht)
-    private Order ensureOrder(Long orderId, Long storeId) {
+    // totalAmount kommt aus dem placement, sonst bleibt order summen auf 0
+    private Order ensureOrder(Long orderId, Long storeId, BigDecimal totalAmount) {
         if (orderId == null) {
             return null;
         }
         Order order = entityManager.find(Order.class, new OrderId(orderId));
         if (order != null) {
+            // order_id ist unique pro placement, also gehört der betrag zu
+            // genau diesem placement - alte runs mit betrag 0 werden repariert
+            if (totalAmount != null && order.getTotalAmount() != null
+                    && order.getTotalAmount().compareTo(totalAmount) != 0) {
+                order.setTotalAmount(totalAmount);
+            }
             return order;
         }
         Store store = ensureStore(storeId != null ? storeId : 1L);
         order = Order.builder()
                 .id(new OrderId(orderId))
                 .orderDate(LocalDateTime.now())
-                .totalAmount(BigDecimal.ZERO)
+                .totalAmount(totalAmount != null ? totalAmount : BigDecimal.ZERO)
                 .store(store)
                 .build();
         entityManager.persist(order);
@@ -219,6 +226,27 @@ public class JpaPersistenceRepository implements PersistenceRepository {
                 .executeUpdate();
         entityManager.clear();
         return deleted;
+    }
+
+    // ---------- Aggregation ----------
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, BigDecimal> sumOrderTotalsByCity() {
+        // group by über placement -> customer.city, sum über order.totalAmount
+        List<Object[]> rows = entityManager.createQuery(
+                        "select op.customer.address.city, sum(op.order.totalAmount) " +
+                                "from Order_Placement op " +
+                                "group by op.customer.address.city",
+                        Object[].class)
+                .getResultList();
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            String city = (String) row[0];
+            BigDecimal sum = row[1] instanceof BigDecimal bd ? bd : BigDecimal.ZERO;
+            result.put(city, sum.setScale(2, java.math.RoundingMode.HALF_UP));
+        }
+        return result;
     }
 
     // ---------- Entity -> Document mapping ----------

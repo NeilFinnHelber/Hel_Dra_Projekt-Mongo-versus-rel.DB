@@ -271,6 +271,29 @@ public class BenchmarkRunner {
                 allMatch &= match;
             }
 
+            // ---------- aggregation: summe order totals pro stadt ----------
+            // mongo: $unwind + $group, jpa: group by + sum (identisches ergebnis)
+            // vergleich über benchmarkstadt bucket, weil rel seed daten hat
+            // die mongo seite nicht kennt
+            long t0 = System.nanoTime();
+            Map<String, BigDecimal> relAgg = jpaRepository.sumOrderTotalsByCity();
+            long relAggMs = (System.nanoTime() - t0) / 1_000_000;
+
+            t0 = System.nanoTime();
+            Map<String, BigDecimal> mongoAgg = mongoRepository.sumOrderTotalsByCity();
+            long mongoAggMs = (System.nanoTime() - t0) / 1_000_000;
+
+            timings.put("rel.aggregationMs", relAggMs);
+            timings.put("mongo.aggregationMs", mongoAggMs);
+
+            BigDecimal relBench = relAgg.get(BENCH_CITY);
+            BigDecimal mongoBench = mongoAgg.get(BENCH_CITY);
+            boolean aggMatch = relBench != null && mongoBench != null
+                    && relBench.subtract(mongoBench).abs()
+                            .compareTo(new BigDecimal("0.01")) <= 0;
+            variantMatches.put("aggregation", aggMatch);
+            result.setAggregationOutcome(relAgg, mongoAgg);
+
             result.setCompareOutcome(relCounts, mongoCounts, variantMatches, allMatch);
             result.finish(timings, docs.size());
             log.info("compare run {} (scale={}) finished: match={}, timings={}",

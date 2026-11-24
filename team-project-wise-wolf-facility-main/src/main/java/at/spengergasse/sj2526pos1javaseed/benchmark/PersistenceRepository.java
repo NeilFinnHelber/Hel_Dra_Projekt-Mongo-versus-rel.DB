@@ -2,7 +2,9 @@ package at.spengergasse.sj2526pos1javaseed.benchmark;
 
 import at.spengergasse.sj2526pos1javaseed.nosql.model.CustomerDocument;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * gemeinsames interface für den vergleich
@@ -38,4 +40,11 @@ public interface PersistenceRepository {
 
     /** delete mit filter auf stadt */
     long deleteByCity(String city);
+
+    /**
+     * aggregation: summe der order totals gruppiert nach stadt
+     * mongo: $unwind orderPlacements + $group (sum totalAmount) by address.city
+     * jpa:  group by op.customer.address.city, sum(op.order.totalAmount)
+     */
+    Map<String, BigDecimal> sumOrderTotalsByCity();
 }
