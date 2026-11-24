@@ -118,9 +118,15 @@ export function benchmarkFlow() {
 // ergebnis hat relationalCounts/mongoCounts/variantMatches zum vergleichen
 
 export function compareFlow() {
+  // INDEX gesetzt -> nur diese variante, sonst laeuft compare beide (mit + ohne)
+  const body = { scales: SCALES };
+  if (__ENV.INDEX !== undefined && __ENV.INDEX !== '') {
+    body.index = __ENV.INDEX === 'true';
+  }
+
   const res = http.post(
     `${BASE_URL}/tests/compare`,
-    JSON.stringify({ scales: SCALES }),
+    JSON.stringify(body),
     { headers: JSON_HEADERS }
   );
 

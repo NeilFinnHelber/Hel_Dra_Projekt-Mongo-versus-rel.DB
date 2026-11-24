@@ -109,15 +109,30 @@ public class BenchmarkRunner {
      */
     public List<BenchmarkResult> startCompare(CompareRunRequest request) {
         List<Integer> scales = normalizeScales(request);
-        List<BenchmarkResult> out = new ArrayList<>(scales.size());
+        List<Boolean> indexVariants = normalizeIndexVariants(request);
+        List<BenchmarkResult> out = new ArrayList<>();
         for (int s : scales) {
-            BenchmarkResult result = new BenchmarkResult(idSeq.incrementAndGet(), "both", s, false);
-            result.setType("compare");
-            results.add(result);
-            out.add(result);
-            executor.submit(() -> executeCompare(result));
+            for (boolean idx : indexVariants) {
+                BenchmarkResult result =
+                        new BenchmarkResult(idSeq.incrementAndGet(), "both", s, idx);
+                result.setType("compare");
+                results.add(result);
+                out.add(result);
+                executor.submit(() -> executeCompare(result));
+            }
         }
         return out;
+    }
+
+    /**
+     * index param: null -> beide varianten (mit + ohne) für direkten vergleich,
+     * gesetzt -> nur die gewählte variante
+     */
+    private List<Boolean> normalizeIndexVariants(CompareRunRequest request) {
+        if (request != null && request.index() != null) {
+            return List.of(request.index());
+        }
+        return List.of(false, true);
     }
 
     private List<Integer> normalizeScales(CompareRunRequest request) {
@@ -206,8 +221,9 @@ public class BenchmarkRunner {
             // beide dbs resetten, sonst sind ergebnisse nicht vergleichbar
             resetBenchmarkData("rel");
             resetBenchmarkData("mongo");
-            applyIndex("rel", false);
-            applyIndex("mongo", false);
+            // index varianten kommen aus dem request (mit/ohne index)
+            applyIndex("rel", result.isIndexVariant());
+            applyIndex("mongo", result.isIndexVariant());
 
             // gleiche id basis für beide seiten, sonst unterschiedliche docs
             long base = Math.max(idBase("rel"), idBase("mongo"));
