@@ -25,7 +25,31 @@
       "orderReturnDate": "2020-01-15",
       "actualReturnDate": "2020-01-11",
       "totalAmount": 42.00,
-      "storeId": 1
+      "store": {
+        "storeId": 1,
+        "phoneNumber": "+43 1 55500001",
+        "films": [
+          {
+            "filmId": 101,
+            "title": "Film 101",
+            "releaseYear": 1991,
+            "length": 91.0,
+            "languages": ["German", "English"],
+            "genres": ["Action", "Drama"]
+          }
+        ],
+        "series": [
+          {
+            "seriesId": 201,
+            "title": "Series 201",
+            "releaseYear": 1996,
+            "episodes": 7,
+            "length": 41.0,
+            "languages": ["German"],
+            "genres": ["Comedy", "Thriller"]
+          }
+        ]
+      }
     }
   ]
 }

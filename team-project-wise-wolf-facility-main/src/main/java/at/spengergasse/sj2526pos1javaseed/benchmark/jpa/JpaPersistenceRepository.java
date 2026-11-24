@@ -81,7 +81,9 @@ public class JpaPersistenceRepository implements PersistenceRepository {
         if (doc.orderPlacements() != null) {
             int idx = 0;
             for (CustomerDocument.PlacementJson p : doc.orderPlacements()) {
-                Order order = ensureOrder(p.orderId(), p.storeId(), p.totalAmount());
+                Order order = ensureOrder(p.orderId(),
+                        p.store() != null ? p.store().storeId() : null,
+                        p.totalAmount());
                 Order_Placement placement = Order_Placement.builder()
                         .id(new Order_PlacementId(doc.id() * 1_000_000L + idx++))
                         .orderDate(p.orderDate())
@@ -308,13 +310,54 @@ public class JpaPersistenceRepository implements PersistenceRepository {
 
     private CustomerDocument.PlacementJson toPlacementJson(Order_Placement op) {
         Order order = op.getOrder();
+        Store store = order != null ? order.getStore() : null;
         return new CustomerDocument.PlacementJson(
                 order != null ? order.getId().getId() : null,
                 op.getOrderDate(),
                 op.getOrderReturnDate(),
                 op.getActualReturnDate(),
                 order != null ? order.getTotalAmount() : null,
-                order != null && order.getStore() != null ? order.getStore().getStoreId().getId() : null);
+                store != null ? toStoreJson(store) : null);
+    }
+
+    // store + m:n katalog komplett einbetten (store_films, store_series)
+    private CustomerDocument.StoreJson toStoreJson(Store store) {
+        return new CustomerDocument.StoreJson(
+                store.getStoreId() != null ? store.getStoreId().getId() : null,
+                store.getPhoneNumber() != null ? store.getPhoneNumber().getValue() : null,
+                store.getFilms() != null
+                        ? store.getFilms().stream().map(this::toFilmJson).toList()
+                        : List.of(),
+                store.getSeries() != null
+                        ? store.getSeries().stream().map(this::toSeriesJson).toList()
+                        : List.of());
+    }
+
+    private CustomerDocument.FilmJson toFilmJson(Film f) {
+        return new CustomerDocument.FilmJson(
+                f.getFilmid() != null ? f.getFilmid().getId() : null,
+                f.getTitle(),
+                f.getRelease_year(),
+                f.getLength(),
+                names(f.getLanguages()),
+                names(f.getGenres()));
+    }
+
+    private CustomerDocument.SeriesJson toSeriesJson(Series s) {
+        return new CustomerDocument.SeriesJson(
+                s.getSeriesid() != null ? s.getSeriesid().getId() : null,
+                s.getTitle(),
+                s.getRelease_year(),
+                s.getEpisodes(),
+                s.getLength(),
+                names(s.getLanguages()),
+                names(s.getGenres()));
+    }
+
+    private static List<String> names(Set<? extends Enum<?>> values) {
+        return values != null
+                ? values.stream().map(Enum::name).toList()
+                : List.of();
     }
 
     private CustomerDocument.AddressJson toAddressJson(Address address) {

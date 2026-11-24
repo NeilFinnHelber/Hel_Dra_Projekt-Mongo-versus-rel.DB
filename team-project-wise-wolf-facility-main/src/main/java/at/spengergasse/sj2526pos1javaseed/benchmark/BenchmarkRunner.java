@@ -399,6 +399,9 @@ public class BenchmarkRunner {
     // ---------- doc generierung ----------
 
     private List<CustomerDocument> generateDocuments(int scale, long idBase) {
+        // store wird pro placement komplett eingebettet (unlogisch, aber
+        // genau der punkt: gleiche daten, embedded vs normalized)
+        CustomerDocument.StoreJson store = benchStore();
         List<CustomerDocument> docs = new ArrayList<>(scale);
         for (int i = 0; i < scale; i++) {
             long id = idBase + i + 1;
@@ -424,8 +427,25 @@ public class BenchmarkRunner {
                             LocalDate.of(2021, 1, 15).plusDays(i % 1500),
                             i % 4 == 0 ? null : LocalDate.of(2021, 1, 10).plusDays(i % 1500),
                             BigDecimal.valueOf(5 + (i * 37) % 500).setScale(2, java.math.RoundingMode.HALF_UP),
-                            1L))));
+                            store))));
         }
         return docs;
+    }
+
+    /** synthetischer store mit 10 films + 10 series embedded (wie seedStores) */
+    private static CustomerDocument.StoreJson benchStore() {
+        List<CustomerDocument.FilmJson> films = new ArrayList<>();
+        List<CustomerDocument.SeriesJson> series = new ArrayList<>();
+        for (int k = 0; k < 10; k++) {
+            long fid = 1000L + k;
+            films.add(new CustomerDocument.FilmJson(
+                    fid, "Bench Film " + fid, 1990 + k, 90f + k,
+                    List.of("German", "English"), List.of("Action", "Drama")));
+            long sid = 2000L + k;
+            series.add(new CustomerDocument.SeriesJson(
+                    sid, "Bench Series " + sid, 1995 + k, 6 + k, 40f + k,
+                    List.of("German"), List.of("Comedy", "Thriller")));
+        }
+        return new CustomerDocument.StoreJson(1L, "+43 1 55500001", films, series);
     }
 }

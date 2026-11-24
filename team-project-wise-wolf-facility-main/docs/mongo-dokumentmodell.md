@@ -5,6 +5,10 @@ Abgeleitet aus dem relationale Schema (Postgres, `docs/Videothek.puml`),
 Daten werden **embedded** in ein Dokument gesteckt statt per JOINS
 zusammengeführt.
 
+Extrem-Variante für den Vergleich: es wird **so viel wie möglich
+eingebettet**, auch wenn das normalisiert unlogisch wäre — genau das
+soll der Benchmark zeigen (Datenmenge + Leseperformance vs. Joins).
+
 Code: `nosql/model/CustomerDocument.java`
 Beispiel: `src/main/resources/nosql/customer-document.example.json`
 
@@ -14,36 +18,38 @@ Pro Kunde existiert **genau ein Dokument**. Begründung:
 
 - die Frontend-Kundenansicht braucht auf einen Blick: Stammdaten,
   Adresse, Zahlungsdaten und den kompletten Verleih-Verlauf
-- in der normalisierten Variante sind das 4+ Tabellen
+- in der normalisierten Variante sind das 6+ Tabellen
   (`customer`, `address_*`-Spalten, `billing_information`,
-  `order_placement` + `orders` + `store`)
+  `order_placement`, `orders`, `store`, `store_films`, `store_series`,
+  `film_*`, `series_*` + element collections)
 - mit embedded Daten liefert **ein einziger `find` auf `_id`**
-  die komplette Ansicht, kein client-seitiges Nachladen
+  die komplette Ansicht, kein client-seitiges Nachladen, keine Joins
 
-## Was embedded ist
+## Was embedded ist (alles außer einer ID)
 
 | Relation (relational) | Im Dokument | Form |
 |---|---|---|
 | `customer.address_*` (1:1) | `address` | eingebettetes Objekt |
 | `billing_information` (1:n) | `billingInformation[]` | Array von Sub-Docs |
-| `order_placement` + `orders` (1:n) | `orderPlacements[]` | Array, Order-Felder denormalisiert (`orderDate`, `totalAmount`, `storeId`) |
+| `order_placement` + `orders` (1:n) | `orderPlacements[]` | Array, Order-Felder denormalisiert (`orderDate`, `totalAmount`) |
+| `store` (n:1) | `orderPlacements[].store` | **eingebettetes Store-Objekt** |
+| `store_films` (m:n) | `store.films[]` | **Film-Sub-Docs embedded** |
+| `store_series` (m:n) | `store.series[]` | **Series-Sub-Docs embedded** |
+| `film_*`, `film_languages`, `film_genres` | `store.films[]` Felder | Titel, Jahr, Länge, Sprachen, Genres |
+| `series_*`, `series_languages`, `series_genres` | `store.series[]` Felder | Titel, Jahr, Episoden, Länge, Sprachen, Genres |
 
-Die m:n- bzw. 1:n-Beziehungen des Kunden werden also als **eingebettete
-Arrays** abgebildet — genau die accesses, die das Frontend pro Kunde
-immer gebündelt liest.
+Heisst: Der **gesamte Katalog des Stores** (10 Films + 10 Series
+inkl. Element-Collections) steckt in **jedem** `orderPlacement` jedes
+Kundendokuments — dieselbe Store-Info wird also pro Kunde und pro
+Placement **redundant gespeichert**. Genau das ist der Trade-off, den
+der Benchmark quantifizieren soll.
 
 ## Was referenziert bleibt
 
-- `orderId` und `storeId` in `orderPlacements` bleiben **IDs**
-  (Referenzen), keine kopierten Entities
-- Begründung: Orders und Stores werden von vielen Kunden geteilt.
-  Würde man sie komplett einbetten, würde sich derselbe Store-Katalog
-  in jedem Kundendokument duplizieren (Daten explosion + Update-Anomalien
-  wenn sich z.B. der Preis ändert)
-- Filmbestand (`store_films`, `store_series` — die echte m:n des Schemas)
-  gehört nicht in das Customer Aggregat: das ist der Katalog des Stores,
-  nicht des Kunden. Der richtige Ort dafür wäre ein eigenes
-  Store-Root-Dokument, das die Film/Series IDs (oder Sub-Docs) einbettet
+- nur `orderId` in `orderPlacements` als skalare ID
+- Begründung: die Order-Entity ist die einzige noch "freie" Entität;
+  alle ihre leserelevanten Felder (`orderDate`, `totalAmount`, Store)
+  sind ohnehin embedded
 
 ## Beispiel-Dokument
 
@@ -52,12 +58,12 @@ immer gebündelt liest.
   "_id": 1,
   "nickname": "seed.user.1",
   "email": "seed.user.1@example.com",
-  "firstName": "James",
-  "lastName": "Jameson",
+  "firstName": "Anna",
+  "lastName": "Huber1",
   "permission": "Admin",
   "address": {
-    "street": "Jamesonstreet 1",
-    "city": "Wienna",
+    "street": "Seedstraße 1",
+    "city": "Wien",
     "zipCode": "1001",
     "country": "Austria"
   },
@@ -75,7 +81,31 @@ immer gebündelt liest.
       "orderReturnDate": "2020-01-15",
       "actualReturnDate": "2020-01-11",
       "totalAmount": 42.00,
-      "storeId": 1
+      "store": {
+        "storeId": 1,
+        "phoneNumber": "+43 1 55500001",
+        "films": [
+          {
+            "filmId": 101,
+            "title": "Film 101",
+            "releaseYear": 1991,
+            "length": 91.0,
+            "languages": ["German", "English"],
+            "genres": ["Action", "Drama"]
+          }
+        ],
+        "series": [
+          {
+            "seriesId": 201,
+            "title": "Series 201",
+            "releaseYear": 1996,
+            "episodes": 7,
+            "length": 41.0,
+            "languages": ["German"],
+            "genres": ["Comedy", "Thriller"]
+          }
+        ]
+      }
     }
   ]
 }
@@ -104,9 +134,13 @@ Lauf gedroppt bzw. vor dem naechsten Lauf neu erstellt):
 
 ## Trade-offs (kurz)
 
-- **READ**: 1 Query statt Customer + Billings + Placements + Orders + Store
-- **CREATE**: `updateLastNameAll` o.ä. bleibt simpel, aber
-  Änderungen an geteilter Order-Info (`totalAmount`) werden im
-  Kundendokument **denormalisiert mitkopiert** — Inkonsistenz-Risiko,
-  für den Benchmark akzeptabel
-- Grösse: Kundendokumente bleiben klein (< 16MB Limit locker)
+- **READ**: 1 Query statt Customer + Billings + Placements + Orders +
+  Store + Films + Series + allen Join-Tabellen — riesiger Unterschied
+  zur normalisierten Variante
+- **WRITE**: Daten werden massiv dupliziert (Store-Katalog pro Kunde
+  pro Placement) — Insert ist langsamer, Collection wird groß
+- **UPDATE-Anomalie**: ändert sich ein Film-Titel, muss er in
+  *jedem* Kundendokument gefixt werden — klassisches embedded-Problem,
+  wird im Vergleich sichtbar
+- **Grösse**: Dokumente bleiben unter dem 16MB-Limit, aber die
+  Collection wächst deutlich schneller als relational

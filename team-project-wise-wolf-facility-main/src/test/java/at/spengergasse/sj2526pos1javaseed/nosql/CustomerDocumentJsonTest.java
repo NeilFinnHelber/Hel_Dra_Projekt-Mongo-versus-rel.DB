@@ -39,7 +39,14 @@ class CustomerDocumentJsonTest {
                         LocalDate.of(2021, 3, 15),
                         LocalDate.of(2021, 3, 10),
                         new BigDecimal("19.99"),
-                        3L)));
+                        new CustomerDocument.StoreJson(
+                                3L, "+43 1 55500003",
+                                List.of(new CustomerDocument.FilmJson(
+                                        11L, "Film 11", 2001, 95f,
+                                        List.of("German"), List.of("Action"))),
+                                List.of(new CustomerDocument.SeriesJson(
+                                        21L, "Series 21", 2005, 8, 45f,
+                                        List.of("German"), List.of("Drama")))))));
 
         // pojo -> json -> bson (so wie toDocument)
         Document bson = Document.parse(objectMapper.writeValueAsString(doc));
