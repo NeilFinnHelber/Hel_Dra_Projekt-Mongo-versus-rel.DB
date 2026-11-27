@@ -1,0 +1,82 @@
+# echte serientitel fuer den testdaten generator (format: titel;erscheinungsjahr)
+# werden pro seed gemischt, bei mehr serien als zeilen wiederholen sich titel
+Breaking Bad;2008
+Better Call Saul;2015
+The Wire;2002
+The Sopranos;1999
+Game of Thrones;2011
+House of the Dragon;2022
+Chernobyl;2019
+Band of Brothers;2001
+The Office;2005
+Friends;1994
+Seinfeld;1989
+The Simpsons;1989
+Futurama;1999
+South Park;1997
+Stranger Things;2016
+Dark;2017
+Babylon Berlin;2017
+Das Boot;2018
+Kommissar Rex;1994
+Vorstadtweiber;2015
+Der Bergdoktor;2008
+Tatort;1970
+Sherlock;2010
+Doctor Who;2005
+Black Mirror;2011
+The Crown;2016
+Downton Abbey;2010
+Peaky Blinders;2013
+Fleabag;2016
+The Mandalorian;2019
+Andor;2022
+The Last of Us;2023
+The Boys;2019
+Succession;2018
+The Bear;2022
+Severance;2022
+Ted Lasso;2020
+True Detective;2014
+Fargo;2014
+Westworld;2016
+Mad Men;2007
+Lost;2004
+Prison Break;2005
+Dexter;2006
+Twin Peaks;1990
+The X-Files;1993
+Twin Peaks: The Return;2017
+Mindhunter;2017
+Narcos;2015
+Money Heist;2017
+Squid Game;2021
+Lupin;2021
+The Witcher;2019
+Arcane;2021
+Attack on Titan;2013
+Death Note;2006
+Fullmetal Alchemist: Brotherhood;2009
+Cowboy Bebop;1998
+Avatar: The Last Airbender;2005
+Rick and Morty;2013
+BoJack Horseman;2014
+Brooklyn Nine-Nine;2013
+Parks and Recreation;2009
+How I Met Your Mother;2005
+The Big Bang Theory;2007
+Modern Family;2009
+Grey's Anatomy;2005
+House;2004
+Scrubs;2001
+ER;1994
+The Walking Dead;2010
+Vikings;2013
+The Handmaid's Tale;2017
+Ozark;2017
+Mare of Easttown;2021
+Shōgun;2024
+Wednesday;2022
+The Queen's Gambit;2020
+Unorthodox;2020
+How to Sell Drugs Online (Fast);2019

@@ -1,0 +1,2 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+at.spengergasse.sj2526pos1javaseed.testdata.TestDataModeEnvironmentPostProcessor
