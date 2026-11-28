@@ -13,7 +13,7 @@ import java.util.List;
  * - mapping über TestDataDocumentMapper auf das bestehende CustomerDocument
  * - insert über das bestehende MongoCustomerRepository.insertBatch
  *   (gleiche json -> bson konvertierung wie im benchmark)
- * - keine spring bean: wird nur vom TestDataService pro lauf gebaut
+ * - keine spring bean: wird vom TestDataService bzw. vom write benchmark gebaut
  */
 public class MongoTestDataWriter {
 
@@ -26,9 +26,14 @@ public class MongoTestDataWriter {
         this.repository = repository;
     }
 
-    /** destruktiv: droppt die komplette customers collection (inkl. indexe) */
+    /**
+     * destruktiv: droppt die komplette customers collection (inkl. indexe)
+     * und legt sie leer neu an, damit das anlegen nicht im ersten insert
+     * (und damit in einer zeitmessung) passiert
+     */
     public void wipe() {
         database.getCollection(MongoCustomerRepository.COLLECTION_NAME).drop();
+        database.createCollection(MongoCustomerRepository.COLLECTION_NAME);
     }
 
     /** katalog wird nicht separat gespeichert, sondern pro placement eingebettet */
@@ -43,8 +48,19 @@ public class MongoTestDataWriter {
         if (customers.isEmpty()) {
             return;
         }
-        List<CustomerDocument> docs = customers.stream().map(mapper::toDocument).toList();
-        repository.insertBatch(docs, docs.size());
+        writeDocuments(customers.stream().map(mapper::toDocument).toList());
+    }
+
+    /** bereits gemappte dokumente schreiben (ein insertMany pro aufruf), z.b. im write benchmark */
+    public void writeDocuments(List<CustomerDocument> docs) {
+        if (!docs.isEmpty()) {
+            repository.insertBatch(docs, docs.size());
+        }
+    }
+
+    /** anzahl dokumente in der customers collection */
+    public long count() {
+        return database.getCollection(MongoCustomerRepository.COLLECTION_NAME).countDocuments();
     }
 
     /** kurzer überblick für das log: dokumente, placements, avg dokument größe */

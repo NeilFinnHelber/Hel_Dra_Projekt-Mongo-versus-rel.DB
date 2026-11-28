@@ -133,6 +133,12 @@ Ablauf in `TestDataService` (aufgerufen vom `TestDataController` bzw. im CLI-Mod
    Ergebnis nicht von Chunk-Größe, Reihenfolge oder Ziel-DB ab: getrennte Läufe mit `target=rel`
    und `target=mongo` liefern dieselben Daten wie ein Lauf mit `target=both`.
 
+Für das referenzierte MongoDB-Modell (`ref_*`-Collections) gibt es zusätzlich den
+`MongoReferencedTestDataWriter`: dieselben `CustomerDocument`s, normalisiert über
+`MongoReferencedRepository.insertCatalog` (Katalog einmal) und `insertCustomers` (pro Chunk).
+Er wird vom [Write-Benchmark](write-benchmark.md) genutzt; `app.testdata.target` kennt weiterhin
+nur `rel`, `mongo` und `both`.
+
 Vollständigkeit: jeder Film/jede Serie ist in mindestens einem Store, jeder Store hat mindestens
 eine Order, jeder Kunde mindestens ein Placement. Damit kommt alles, was relational gespeichert
 wird, auch im Mongo-Dokument vor.

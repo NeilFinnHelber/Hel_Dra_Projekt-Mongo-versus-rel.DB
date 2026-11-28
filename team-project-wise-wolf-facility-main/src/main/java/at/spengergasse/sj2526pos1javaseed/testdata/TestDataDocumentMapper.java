@@ -37,6 +37,13 @@ public class TestDataDocumentMapper {
         this.storesById = Map.copyOf(stores);
     }
 
+    /** alle stores inkl. katalog, nach id sortiert (für den katalog insert im referenz modell) */
+    public List<CustomerDocument.StoreJson> stores() {
+        return storesById.values().stream()
+                .sorted(java.util.Comparator.comparingLong(CustomerDocument.StoreJson::storeId))
+                .toList();
+    }
+
     public CustomerDocument toDocument(TestData.Customer c) {
         return new CustomerDocument(
                 c.id(),

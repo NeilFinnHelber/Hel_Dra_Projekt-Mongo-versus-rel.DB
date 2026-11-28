@@ -49,3 +49,6 @@ build/
 /data/videos/
 .idea/
 .DS_Store
+
+### Benchmark-Ergebnisse (k6 / docker-compose.benchmark.yml) ###
+benchmark-results/

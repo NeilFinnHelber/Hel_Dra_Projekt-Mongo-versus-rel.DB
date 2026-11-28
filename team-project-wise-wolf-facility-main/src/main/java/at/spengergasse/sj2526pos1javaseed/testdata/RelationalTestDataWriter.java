@@ -18,12 +18,12 @@ import java.util.Map;
  * - fk reihenfolge: film/series (+ element collections) -> store
  *   -> store_films/store_series -> customer -> billing -> orders -> placement
  * - pro chunk eine transaktion
- * - keine spring bean: wird nur vom TestDataService pro lauf gebaut
+ * - keine spring bean: wird vom TestDataService bzw. vom write benchmark gebaut
  */
 public class RelationalTestDataWriter {
 
     /** alle tabellen die der generator befüllt (phone_numbers hat keine fk und kein mongo pendant) */
-    static final List<String> TABLES = List.of(
+    public static final List<String> TABLES = List.of(
             "order_placement", "orders", "billing_information", "customer",
             "store_films", "store_series", "store",
             "film_genres", "film_languages", "film",
