@@ -5,3 +5,13 @@ To start:
 docker compose up
 run: sj2526JavaSeedApplication
 in a chosen browser go to: http://localhost:8080/
+
+## Benchmarks ausführen (k6)
+
+```
+docker compose -f docker-compose.yml -f docker-compose.benchmark.yml run --rm k6
+```
+
+Startet DBs + eine Benchmark-App und führt k6 im Docker-Netzwerk aus (Default `MODE=insert`,
+andere Modi über `MODE=benchmark|compare|crud`). Ergebnisse in `benchmark-results/`.
+Ein normales `docker compose up` startet k6 nicht. Details: `docs/write-benchmark.md`.

@@ -98,16 +98,7 @@ public class TestDataService {
         TestDataGenerator generator = new TestDataGenerator(seed, count);
         TestDataSizes sizes = generator.sizes();
 
-        Set<String> allowed = Arrays.stream(allowedHosts.split(","))
-                .map(s -> s.strip().toLowerCase(Locale.ROOT))
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-        if (rel) {
-            assertAllowed("PostgreSQL", postgresHosts(datasourceUrl), allowed);
-        }
-        if (mongo) {
-            assertAllowed("MongoDB", mongoHosts(mongoUri), allowed);
-        }
+        assertTargetsAllowed(rel, mongo);
 
         log.info("Testdaten generator: target={}, seed={}, chunkSize={}", normalizedTarget, seed, chunkSize);
         log.info("Mengengeruest (primaer = customers): customers={}, films={}, series={}, stores={}, "
@@ -211,16 +202,7 @@ public class TestDataService {
         boolean rel = "both".equals(normalizedTarget) || "rel".equals(normalizedTarget);
         boolean mongo = "both".equals(normalizedTarget) || "mongo".equals(normalizedTarget);
 
-        Set<String> allowed = Arrays.stream(allowedHosts.split(","))
-                .map(s -> s.strip().toLowerCase(Locale.ROOT))
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-        if (rel) {
-            assertAllowed("PostgreSQL", postgresHosts(datasourceUrl), allowed);
-        }
-        if (mongo) {
-            assertAllowed("MongoDB", mongoHosts(mongoUri), allowed);
-        }
+        assertTargetsAllowed(rel, mongo);
 
         long relNs = 0, mongoNs = 0;
         Map<String, Long> rows = Map.of();
@@ -248,6 +230,24 @@ public class TestDataService {
         log.info("Geleert in {} ms (postgres {} ms, mongo {} ms)", totalNs / 1_000_000, relNs / 1_000_000, mongoNs / 1_000_000);
         return new WipeResult(normalizedTarget, relNs / 1_000_000, mongoNs / 1_000_000, totalNs / 1_000_000,
                 rows, mongoSummary);
+    }
+
+    /**
+     * sicherheits check vor jedem löschen: hosts der ziel db(s) müssen in
+     * app.testdata.allowed-hosts stehen, sonst IllegalStateException
+     * (auch vom write benchmark genutzt)
+     */
+    public void assertTargetsAllowed(boolean rel, boolean mongo) {
+        Set<String> allowed = Arrays.stream(allowedHosts.split(","))
+                .map(s -> s.strip().toLowerCase(Locale.ROOT))
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+        if (rel) {
+            assertAllowed("PostgreSQL", postgresHosts(datasourceUrl), allowed);
+        }
+        if (mongo) {
+            assertAllowed("MongoDB", mongoHosts(mongoUri), allowed);
+        }
     }
 
     private static String normalizeTarget(String target) {

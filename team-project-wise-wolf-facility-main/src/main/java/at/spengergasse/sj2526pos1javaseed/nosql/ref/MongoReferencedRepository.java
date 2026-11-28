@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -82,93 +83,138 @@ public class MongoReferencedRepository implements PersistenceRepository {
     /**
      * baut aus jedem CustomerDocument die normalisierten documents
      * store/film/series katalog wird dedupliziert (ist shared data)
+     *
+     * katalog wird pro aufruf mitgeschrieben -> nur für einen einzigen
+     * aufruf pro datensatz geeignet (BenchmarkRunner). für chunk weises
+     * schreiben insertCatalog einmal + insertCustomers pro chunk nutzen
      */
     @Override
     public long insertBatch(List<CustomerDocument> documents, int batchSize) {
-        Map<Long, Document> customers = new LinkedHashMap<>();
-        Map<Long, Document> addresses = new LinkedHashMap<>();
-        Map<Long, Document> billings = new LinkedHashMap<>();
-        Map<Long, Document> placements = new LinkedHashMap<>();
-        Map<Long, Document> orders = new LinkedHashMap<>();
-        // shared katalog, über alle docs dedupliziert
-        Map<Long, Document> stores = new LinkedHashMap<>();
-        Map<Long, Document> films = new LinkedHashMap<>();
-        Map<Long, Document> series = new LinkedHashMap<>();
-        Map<String, Document> storeFilms = new LinkedHashMap<>();
-        Map<String, Document> storeSeries = new LinkedHashMap<>();
-
+        RefDocuments out = new RefDocuments();
         long seq = 0;
         for (CustomerDocument doc : documents) {
-            Long cid = doc.id();
-            customers.put(cid, new Document("_id", cid)
-                    .append("nickname", doc.nickname())
-                    .append("email", doc.email())
-                    .append("firstName", doc.firstName())
-                    .append("lastName", doc.lastName())
-                    .append("permission", doc.permission())
-                    .append("addressId", doc.address() != null ? cid : null));
+            seq = collectCustomer(doc, out, true, seq);
+        }
+        out.insert(batchSize);
+        return documents.size();
+    }
 
-            if (doc.address() != null) {
-                CustomerDocument.AddressJson a = doc.address();
-                addresses.put(cid, new Document("_id", cid)
-                        .append("street", a.street())
-                        .append("city", a.city())
-                        .append("zipCode", a.zipCode())
-                        .append("country", a.country()));
+    /**
+     * nur der shared katalog: stores, films, series + join collections
+     * (einmal pro datensatz, vor insertCustomers)
+     */
+    public void insertCatalog(Collection<CustomerDocument.StoreJson> stores, int batchSize) {
+        RefDocuments out = new RefDocuments();
+        for (CustomerDocument.StoreJson store : stores) {
+            addStore(store, out, 0);
+        }
+        out.insert(batchSize);
+    }
+
+    /**
+     * nur die kunden seite: customers, addresses, billings, placements, orders
+     * katalog (stores/films/series) muss schon per insertCatalog existieren
+     */
+    public long insertCustomers(List<CustomerDocument> documents, int batchSize) {
+        RefDocuments out = new RefDocuments();
+        for (CustomerDocument doc : documents) {
+            collectCustomer(doc, out, false, 0);
+        }
+        out.insert(batchSize);
+        return documents.size();
+    }
+
+    /** gesammelte documents pro collection, insert reihenfolge wie bisher */
+    private final class RefDocuments {
+        final Map<Long, Document> customers = new LinkedHashMap<>();
+        final Map<Long, Document> addresses = new LinkedHashMap<>();
+        final Map<Long, Document> billings = new LinkedHashMap<>();
+        final Map<Long, Document> placements = new LinkedHashMap<>();
+        final Map<Long, Document> orders = new LinkedHashMap<>();
+        // shared katalog, dedupliziert
+        final Map<Long, Document> stores = new LinkedHashMap<>();
+        final Map<Long, Document> films = new LinkedHashMap<>();
+        final Map<Long, Document> series = new LinkedHashMap<>();
+        final Map<String, Document> storeFilms = new LinkedHashMap<>();
+        final Map<String, Document> storeSeries = new LinkedHashMap<>();
+
+        void insert(int batchSize) {
+            insertChunked(CUSTOMERS, customers.values(), batchSize);
+            insertChunked(ADDRESSES, addresses.values(), batchSize);
+            insertChunked(BILLINGS, billings.values(), batchSize);
+            insertChunked(PLACEMENTS, placements.values(), batchSize);
+            insertChunked(ORDERS, orders.values(), batchSize);
+            insertChunked(STORES, stores.values(), batchSize);
+            insertChunked(FILMS, films.values(), batchSize);
+            insertChunked(SERIES, series.values(), batchSize);
+            insertChunked(STORE_FILMS, storeFilms.values(), batchSize);
+            insertChunked(STORE_SERIES, storeSeries.values(), batchSize);
+        }
+    }
+
+    /** ein CustomerDocument -> normalisierte documents, gibt neuen seq wert zurück */
+    private long collectCustomer(CustomerDocument doc, RefDocuments out, boolean withCatalog, long seq) {
+        Long cid = doc.id();
+        out.customers.put(cid, new Document("_id", cid)
+                .append("nickname", doc.nickname())
+                .append("email", doc.email())
+                .append("firstName", doc.firstName())
+                .append("lastName", doc.lastName())
+                .append("permission", doc.permission())
+                .append("addressId", doc.address() != null ? cid : null));
+
+        if (doc.address() != null) {
+            CustomerDocument.AddressJson a = doc.address();
+            out.addresses.put(cid, new Document("_id", cid)
+                    .append("street", a.street())
+                    .append("city", a.city())
+                    .append("zipCode", a.zipCode())
+                    .append("country", a.country()));
+        }
+
+        if (doc.billingInformation() != null) {
+            int i = 0;
+            for (CustomerDocument.BillingJson b : doc.billingInformation()) {
+                long bid = cid * 1000 + i++;
+                out.billings.put(bid, new Document("_id", bid)
+                        .append("customerId", cid)
+                        .append("cardNumber", b.cardNumber())
+                        .append("expirationDate", b.expirationDate())
+                        .append("cvv", b.cvv()));
             }
+        }
 
-            if (doc.billingInformation() != null) {
-                int i = 0;
-                for (CustomerDocument.BillingJson b : doc.billingInformation()) {
-                    long bid = cid * 1000 + i++;
-                    billings.put(bid, new Document("_id", bid)
-                            .append("customerId", cid)
-                            .append("cardNumber", b.cardNumber())
-                            .append("expirationDate", b.expirationDate())
-                            .append("cvv", b.cvv()));
-                }
-            }
+        if (doc.orderPlacements() != null) {
+            int i = 0;
+            for (CustomerDocument.PlacementJson p : doc.orderPlacements()) {
+                long pid = cid * 1000 + i++;
+                CustomerDocument.OrderJson o = p.order();
+                out.placements.put(pid, new Document("_id", pid)
+                        .append("customerId", cid)
+                        .append("orderId", o != null ? o.orderId() : null)
+                        .append("orderDate", p.orderDate() != null ? p.orderDate().toString() : null)
+                        .append("orderReturnDate", p.orderReturnDate() != null ? p.orderReturnDate().toString() : null)
+                        .append("actualReturnDate", p.actualReturnDate() != null ? p.actualReturnDate().toString() : null));
 
-            if (doc.orderPlacements() != null) {
-                int i = 0;
-                for (CustomerDocument.PlacementJson p : doc.orderPlacements()) {
-                    long pid = cid * 1000 + i++;
-                    CustomerDocument.OrderJson o = p.order();
-                    placements.put(pid, new Document("_id", pid)
-                            .append("customerId", cid)
-                            .append("orderId", o != null ? o.orderId() : null)
-                            .append("orderDate", p.orderDate() != null ? p.orderDate().toString() : null)
-                            .append("orderReturnDate", p.orderReturnDate() != null ? p.orderReturnDate().toString() : null)
-                            .append("actualReturnDate", p.actualReturnDate() != null ? p.actualReturnDate().toString() : null));
+                if (o != null) {
+                    out.orders.put(o.orderId(), new Document("_id", o.orderId())
+                            .append("storeId", o.store() != null ? o.store().storeId() : null)
+                            .append("orderDate", o.orderDate() != null ? o.orderDate().toString() : null)
+                            .append("totalAmount", o.totalAmount() != null ? o.totalAmount().doubleValue() : null));
 
-                    if (o != null) {
-                        orders.put(o.orderId(), new Document("_id", o.orderId())
-                                .append("storeId", o.store() != null ? o.store().storeId() : null)
-                                .append("orderDate", o.orderDate() != null ? o.orderDate().toString() : null)
-                                .append("totalAmount", o.totalAmount() != null ? o.totalAmount().doubleValue() : null));
-
-                        CustomerDocument.StoreJson s = o.store();
-                        if (s != null) {
-                            stores.putIfAbsent(s.storeId(), new Document("_id", s.storeId())
-                                    .append("phoneNumber", s.phoneNumber()));
-                            addCatalog(s, films, series, storeFilms, storeSeries, seq++);
-                        }
+                    if (withCatalog && o.store() != null) {
+                        addStore(o.store(), out, seq++);
                     }
                 }
             }
         }
+        return seq;
+    }
 
-        insertChunked(CUSTOMERS, customers.values(), batchSize);
-        insertChunked(ADDRESSES, addresses.values(), batchSize);
-        insertChunked(BILLINGS, billings.values(), batchSize);
-        insertChunked(PLACEMENTS, placements.values(), batchSize);
-        insertChunked(ORDERS, orders.values(), batchSize);
-        insertChunked(STORES, stores.values(), batchSize);
-        insertChunked(FILMS, films.values(), batchSize);
-        insertChunked(SERIES, series.values(), batchSize);
-        insertChunked(STORE_FILMS, storeFilms.values(), batchSize);
-        insertChunked(STORE_SERIES, storeSeries.values(), batchSize);
-        return documents.size();
+    private void addStore(CustomerDocument.StoreJson s, RefDocuments out, long seqBase) {
+        out.stores.putIfAbsent(s.storeId(), new Document("_id", s.storeId())
+                .append("phoneNumber", s.phoneNumber()));
+        addCatalog(s, out.films, out.series, out.storeFilms, out.storeSeries, seqBase);
     }
 
     private void addCatalog(CustomerDocument.StoreJson store,

@@ -1,0 +1,71 @@
+# Nur fuer Benchmark-Laeufe, wird von "docker compose up" NICHT geladen.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.benchmark.yml run --rm k6
+#
+# beide services haben das profil "benchmark": auch "up" mit beiden dateien startet
+# weder benchmark-app noch k6, nur der explizite "run --rm k6".
+#
+# startet postgres + mongo (falls noetig) und benchmark-app, wartet bis die app
+# bereit ist und fuehrt dann k6 aus (MODE=insert, wenn nichts gesetzt ist).
+# Ergebnisse landen in ./benchmark-results. Details: docs/write-benchmark.md
+#
+# - benchmark-app = app-service mit freigeschaltetem Test-Endpoint (leert DBs!),
+#   ohne Seed und ohne veroeffentlichten Port: nur k6 im Docker-Netzwerk erreicht sie.
+#   Der normale app-Service bleibt unveraendert (Endpoint aus).
+# - k6 laeuft im selben Netzwerk -> keine Verzerrung durch die Port-Weiterleitung
+#   von Docker Desktop.
+
+services:
+  benchmark-app:
+    extends:
+      file: docker-compose.yml
+      service: app
+    container_name: benchmark_app
+    profiles: ["benchmark"]
+    ports: !reset []
+    restart: "no"
+    environment:
+      APP_SEED_ENABLED: "false"
+      APP_TESTDATA_ENDPOINT_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      # bereit, sobald tomcat auf 8080 annimmt (image hat kein curl)
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: ["benchmark"]
+    depends_on:
+      benchmark-app:
+        condition: service_healthy
+    working_dir: /out
+    volumes:
+      - ./k6:/scripts:ro
+      - ./benchmark-results:/out
+    command: ["run", "/scripts/benchmark.js"]
+    environment:
+      BASE_URL: http://benchmark-app:8080
+      MODE: ${MODE:-insert}
+      # insert (#8)
+      DATABASES: ${DATABASES:-}
+      SCALES: ${SCALES:-}
+      REPETITIONS: ${REPETITIONS:-}
+      WARMUPS: ${WARMUPS:-}
+      SEED: ${SEED:-}
+      CHUNK_SIZE: ${CHUNK_SIZE:-}
+      # benchmark / compare / crud (bestehende modi)
+      DATABASE: ${DATABASE:-}
+      SCALE: ${SCALE:-}
+      INDEX: ${INDEX:-}
+      VUS: ${VUS:-}
+      DURATION: ${DURATION:-}
+      POLL_S: ${POLL_S:-}
+      MAX_WAIT_S: ${MAX_WAIT_S:-}

@@ -5,13 +5,19 @@
 //   misst die serverseitigen operation zeiten (insertBatch, findAll, ...)
 // - crud: klassischer http load test auf /items (create, get, list, update, delete)
 //
-// aufruf:
+// aufruf im docker-netzwerk (empfohlen, keine lokale k6 installation noetig):
+//   docker compose -f docker-compose.yml -f docker-compose.benchmark.yml run --rm k6   # MODE default insert
+//
+// aufruf mit lokalem k6:
 //   k6 run k6/benchmark.js                                  # benchmark, mongo, 1000
 //   BASE_URL=http://localhost:8080 MODE=benchmark DATABASE=rel SCALE=10000 INDEX=true k6 run k6/benchmark.js
 //   MODE=compare SCALES=1000,10000,100000 k6 run k6/benchmark.js
 //   MODE=crud VUS=10 DURATION=30s k6 run k6/benchmark.js
+//   MODE=insert k6 run k6/benchmark.js                      # insert benchmark #8 (defaults: alle dbs, 100/1000/100000, 1+5 laeufe)
+//   MODE=insert DATABASES=rel,mongo SCALES=100,1000 REPETITIONS=3 WARMUPS=1 k6 run k6/benchmark.js
 //
 // output: benchmark-results.json + benchmark-results.csv landen im cwd
+//         (MODE=insert: insert-<zeitstempel>.csv / -summary.csv / .json)
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
@@ -34,8 +40,26 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
 // fertige benchmark results sammeln, damit handleSummary csv/json draus bauen kann
 var benchmarkResults = [];
 
+// insert modus: alles passiert in setup() (siehe unten), daher grosszuegiger setup timeout
+const INSERT_OPTIONS = {
+  setupTimeout: `${MAX_WAIT_S + 60}s`,
+  scenarios: {
+    insert: {
+      executor: 'per-vu-iterations',
+      vus: 1,
+      iterations: 1,
+      exec: 'insertFlow',
+    },
+  },
+  thresholds: {
+    http_req_failed: ['rate<0.01'],
+  },
+};
+
 export const options =
-  MODE === 'crud'
+  MODE === 'insert'
+    ? INSERT_OPTIONS
+    : MODE === 'crud'
     ? {
         scenarios: {
           crud: {
@@ -153,6 +177,82 @@ export function compareFlow() {
   });
 }
 
+// ---------- insert modus (issue #8) ----------
+// startet den insert benchmark (POST /tests/insert) und pollt GET /tests/insert/{id}.
+// gemessen wird serverseitig (leere db, warmups + wiederholungen), k6 startet nur und speichert.
+// braucht app.testdata.endpoint-enabled=true in der app (endpoint leert die dbs).
+//
+// laeuft komplett in setup(): handleSummary sieht keine variablen, die waehrend des tests
+// gesetzt werden, aber den rueckgabewert von setup() als data.setup_data
+
+function csvList(value) {
+  return value.split(',').map((v) => v.trim()).filter((v) => v !== '');
+}
+
+export function setup() {
+  if (MODE !== 'insert') {
+    return null;
+  }
+
+  // nur gesetzte env vars mitschicken, rest = server defaults
+  const body = {};
+  if (__ENV.DATABASES) body.databases = csvList(__ENV.DATABASES);
+  if (__ENV.SCALES) body.scales = csvList(__ENV.SCALES).map(Number);
+  if (__ENV.REPETITIONS) body.repetitions = Number(__ENV.REPETITIONS);
+  if (__ENV.WARMUPS) body.warmups = Number(__ENV.WARMUPS);
+  if (__ENV.SEED) body.seed = Number(__ENV.SEED);
+  if (__ENV.CHUNK_SIZE) body.chunkSize = Number(__ENV.CHUNK_SIZE);
+
+  const res = http.post(`${BASE_URL}/tests/insert`, JSON.stringify(body), { headers: JSON_HEADERS });
+  check(res, { 'insert started (202)': (r) => r.status === 202 });
+  if (res.status !== 202) {
+    console.error(`tests/insert failed: ${res.status} ${res.body}`);
+    return null;
+  }
+
+  let report = res.json();
+  const id = report.id;
+  console.log(`insert benchmark ${id} gestartet: ${JSON.stringify(report.config)} -> ${report.totalSteps} messungen`);
+
+  const deadline = Date.now() + MAX_WAIT_S * 1000;
+  while (report.status === 'RUNNING' && Date.now() < deadline) {
+    sleep(POLL_S);
+    const r = http.get(`${BASE_URL}/tests/insert/${id}`);
+    check(r, { 'insert report ok': (x) => x.status === 200 });
+    if (r.status === 200) {
+      report = r.json();
+      console.log(`insert ${id}: ${report.completedSteps}/${report.totalSteps} messungen`);
+    }
+  }
+
+  if (report.status === 'RUNNING') {
+    console.error(`insert ${id} timeout nach ${MAX_WAIT_S}s`);
+    return null;
+  }
+  if (report.status === 'FAILED') {
+    console.error(`insert ${id} FAILED: ${report.error}`);
+  }
+
+  (report.summaries || []).forEach((s) => {
+    console.log(`${s.database} scale=${s.scale}: mean ${s.meanMs.toFixed(3)} ms, median ${s.medianMs.toFixed(3)} ms (n=${s.n})`);
+  });
+
+  return {
+    report: report,
+    measurementsCsv: http.get(`${BASE_URL}/tests/insert/${id}/measurements.csv`).body,
+    summaryCsv: http.get(`${BASE_URL}/tests/insert/${id}/summary.csv`).body,
+  };
+}
+
+// eigentliche arbeit passiert in setup()
+export function insertFlow() {}
+
+// insert-<yyyyMMdd-HHmmss> aus dem startzeitpunkt (utc) vom server
+function insertFileBase(report) {
+  const ts = (report.startedAt || new Date().toISOString()).slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+  return `insert-${ts}`;
+}
+
 // ---------- helpers ----------
 
 // pollt /tests/results bis der run nicht mehr RUNNING ist
@@ -251,6 +351,18 @@ export function crudFlow() {
 // csv hat eine zeile pro operation (insertBatchMs, findAllMs, ...)
 
 export function handleSummary(data) {
+  if (MODE === 'insert') {
+    const out = { stdout: textSummary(data, { indent: ' ', enableColors: true }) };
+    const insert = data.setup_data;
+    if (insert && insert.report) {
+      const base = insertFileBase(insert.report);
+      out[`${base}.csv`] = insert.measurementsCsv;
+      out[`${base}-summary.csv`] = insert.summaryCsv;
+      out[`${base}.json`] = JSON.stringify(insert.report, null, 2);
+    }
+    return out;
+  }
+
   const rows = ['id,database,scale,indexVariant,status,operation,durationMs'];
 
   benchmarkResults.forEach((r) => {
